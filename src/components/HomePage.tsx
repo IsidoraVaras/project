@@ -1,5 +1,7 @@
 import React from 'react';
 import { BarChart3, Users, CheckCircle, TrendingUp } from 'lucide-react';
+import logoudla from '../assets/logoudla.png';
+import logoCIPAES from '../assets/LogoCIPAES.png';
 
 interface HomePageProps {
   onLoginClick: () => void;
@@ -9,23 +11,23 @@ export const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
-      <header className="bg-gray-100 shadow-sm border-b border-gray-300">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
-              <BarChart3 className="h-8 w-8 text-orange-500" />
-              <h1 className="text-xl font-bold text-gray-900">Encuestas Pro</h1>
-            </div>
-            
-            <button
-              onClick={onLoginClick}
-              className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2 rounded-lg font-medium transition-colors duration-200"
-            >
-              Iniciar Sesión
-            </button>
+      <header className="w-full bg-gray-100 shadow-sm border-b border-gray-300">
+        <div className="flex justify-between items-center h-16 px-4 sm:px-6 lg:px-8">
+          {/* Logo + Título */}
+          <div className="flex items-center space-x-3">
+            <img src={logoudla} alt="Logo UDLA" className="h-12 w-auto" />
           </div>
+
+          <button
+            onClick={onLoginClick}
+            className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2 rounded-lg font-medium transition-colors duration-200"
+          >
+            Iniciar Sesión
+          </button>
         </div>
       </header>
+
+
 
       {/* Hero Section */}
       <section className="relative py-20 px-4 bg-gray-50">
@@ -37,8 +39,8 @@ export const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
               <span className="text-orange-500"> Profesional</span>
             </h1>
             <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-              Recopila información valiosa de tus clientes con nuestras encuestas predefinidas. 
-              Obtén resultados inmediatos y análisis detallados para tomar mejores decisiones.
+              Accede a tus encuestas de forma rápida, segura y sencilla. Responde desde
+              cualquier dispositivo y contribuye con información valiosa.
             </p>
           </div>
 
@@ -65,26 +67,23 @@ export const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
               <Users className="h-10 w-10 text-orange-500 mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-3">Fácil de Usar</h3>
               <p className="text-gray-700">
-                Interfaz intuitiva diseñada para que tanto clientes como administradores 
-                puedan navegar sin complicaciones.
+                Encuestas claras y directas, listas para responder en pocos minutos.
               </p>
             </div>
 
             <div className="bg-white border border-gray-300 rounded-xl p-6 hover:border-orange-500/50 hover:shadow-lg transition-all duration-300">
               <CheckCircle className="h-10 w-10 text-orange-500 mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Resultados Inmediatos</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">Acceso desde cualquier lugar</h3>
               <p className="text-gray-700">
-                Visualiza los resultados de las encuestas al instante con gráficos 
-                y estadísticas detalladas.
+                Ingresa desde tu computadora, tablet o celular sin complicaciones.
               </p>
             </div>
 
             <div className="bg-white border border-gray-300 rounded-xl p-6 hover:border-orange-500/50 hover:shadow-lg transition-all duration-300">
               <TrendingUp className="h-10 w-10 text-orange-500 mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Análisis Completo</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">Respuestas seguras</h3>
               <p className="text-gray-700">
-                Accede a análisis profundos y métricas avanzadas para comprender 
-                mejor a tu audiencia.
+                Tus datos son confidenciales y estaran siempre protegidos.
               </p>
             </div>
           </div>
@@ -118,7 +117,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
             <span className="text-white font-semibold">Encuestas Pro</span>
           </div>
           <p className="text-gray-400">
-            © 2024 Encuestas Pro. Todos los derechos reservados.
+            © 2025 Encuestas Pro. Todos los derechos reservados.
           </p>
         </div>
       </footer>
