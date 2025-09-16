@@ -1,6 +1,7 @@
 import React from 'react';
 import { LogOut, User as UserIcon, BarChart3 } from 'lucide-react';
 import { User } from '../types';
+import logoudla from '../assets/logoudla.png';
 
 interface HeaderProps {
   user: User | null;
@@ -13,9 +14,8 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center space-x-3">
-            <BarChart3 className="h-8 w-8 text-orange-500" />
             <h1 className="text-xl font-bold text-gray-900">
-              Encuestas Pro
+              <img src={logoudla} alt="Logo UDLA" className="h-12 w-auto" />
             </h1>
           </div>
           

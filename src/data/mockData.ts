@@ -469,7 +469,7 @@ export const mockSurveys: Survey[] = [
 export const mockUsers: User[] = [
   {
     id: '1',
-    name: 'Dr. Admin',
+    name: 'Admin',
     email: 'admin@encuestas.com',
     role: 'admin',
   },

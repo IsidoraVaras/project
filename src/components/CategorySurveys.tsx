@@ -27,9 +27,6 @@ export const CategorySurveys: React.FC<CategorySurveysProps> = ({
         </button>
         <div>
           <h2 className="text-3xl font-bold text-gray-900 mb-2">{categoryTitle}</h2>
-          <p className="text-gray-700">
-            {surveys.length} encuestas disponibles en esta categoría
-          </p>
         </div>
       </div>
 
