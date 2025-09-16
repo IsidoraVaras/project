@@ -1,7 +1,7 @@
 import React from 'react';
 import { BarChart3, Users, CheckCircle, TrendingUp } from 'lucide-react';
 import logoudla from '../assets/logoudla.png';
-import logoCIPAES from '../assets/LogoCIPAES.png';
+import logocipaes from '../assets/LogoCIPAES.png';
 
 interface HomePageProps {
   onLoginClick: () => void;
@@ -16,6 +16,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
           {/* Logo + Título */}
           <div className="flex items-center space-x-3">
             <img src={logoudla} alt="Logo UDLA" className="h-12 w-auto" />
+            <img src={logocipaes} alt="Logo CIPAES" className="h-32 w-auto" />
           </div>
 
           <button
@@ -44,14 +45,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
-            <button
-              onClick={onLoginClick}
-              className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-3 rounded-lg font-medium text-lg transition-all duration-200 transform hover:scale-105"
-            >
-              Comenzar Ahora
-            </button>
-          </div>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16"></div>
         </div>
       </section>
 

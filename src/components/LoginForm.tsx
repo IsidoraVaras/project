@@ -91,7 +91,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
                     value={formData.name}
                     onChange={handleInputChange}
                     className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-600"
-                    placeholder="Tu nombre completo"
+                    placeholder="Nombre completo"
                   />
                 </div>
               </div>
@@ -110,7 +110,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
                   value={formData.email}
                   onChange={handleInputChange}
                   className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-600"
-                  placeholder="tu@email.com"
+                  placeholder="correo@gmail.com"
                 />
               </div>
             </div>
