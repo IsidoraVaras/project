@@ -25,8 +25,11 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({ categories, onCatego
 
       <div className="grid md:grid-cols-3 gap-8">
         {categories.map((category) => {
-          const IconComponent = iconMap[category.icon as keyof typeof iconMap];
-          
+          // Asigna un ícono basado en el nombre (puedes ajustar esta lógica según lo necesites)
+          const categoryName = category.nombre || '';
+          const iconKey = categoryName.includes('Psicosociales') ? 'Brain' : categoryName.includes('Lengua') ? 'Languages' : 'BookOpen';
+          const IconComponent = iconMap[iconKey as keyof typeof iconMap];
+
           return (
             <div
               key={category.id}
@@ -39,16 +42,16 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({ categories, onCatego
                 </div>
                 
                 <h3 className="text-xl font-bold text-gray-900 mb-4 group-hover:text-orange-600 transition-colors">
-                  {category.title}
+                  {category.nombre}
                 </h3>
                 
                 <p className="text-gray-600 mb-6 leading-relaxed">
-                  {category.description}
+                  {/* Aquí no se muestra la descripción ya que no está en la base de datos */}
                 </p>
                 
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-                    {category.surveysCount} encuestas
+                    0 encuestas {/* Dejamos esto en 0 por ahora ya que no hay un conteo */}
                   </span>
                   
                   <div className="flex items-center space-x-2 text-orange-600 font-semibold group-hover:text-orange-700">

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+// src/components/AdminDashboard.tsx
+import React, { useState, useEffect } from 'react';
 import { Users, ClipboardList, BarChart3, Eye, ArrowLeft } from 'lucide-react';
-import { User, SurveyResponse } from '../types';
-import { mockUsers, mockResponses, mockSurveys } from '../data/mockData';
+import { User, SurveyResponse, Survey } from '../types';
 
 interface AdminDashboardProps {
   user: User;
@@ -12,10 +12,41 @@ type View = 'overview' | 'responses' | 'user-detail';
 export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
   const [currentView, setCurrentView] = useState<View>('overview');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [clients, setClients] = useState<User[]>([]);
+  const [responses, setResponses] = useState<SurveyResponse[]>([]);
+  const [surveys, setSurveys] = useState<Survey[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const clients = mockUsers.filter(u => u.role === 'client');
-  const responses = mockResponses;
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [clientsRes, responsesRes, surveysRes] = await Promise.all([
+          fetch('http://localhost:3001/api/users'),
+          fetch('http://localhost:3001/api/responses'),
+          fetch('http://localhost:3001/api/surveys'),
+        ]);
+        
+        const clientsData = await clientsRes.json();
+        const responsesData = await responsesRes.json();
+        const surveysData = await surveysRes.json();
 
+        setClients(clientsData.filter((u: User) => u.role === 'client'));
+        setResponses(responsesData);
+        setSurveys(surveysData);
+
+      } catch (error) {
+        console.error('Error fetching admin data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return <div className="text-center py-12">Cargando datos del panel de administración...</div>;
+  }
+  
   const getResponsesForUser = (userId: string) => {
     return responses.filter(r => r.userId === userId);
   };
@@ -42,7 +73,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Encuestas Disponibles</p>
-              <p className="text-3xl font-bold text-gray-900">{mockSurveys.filter(s => s.isActive).length}</p>
+              <p className="text-3xl font-bold text-gray-900">{surveys.filter(s => s.isActive).length}</p>
             </div>
             <ClipboardList className="h-8 w-8 text-orange-500" />
           </div>
@@ -67,7 +98,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
             return (
               <div key={client.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-300">
                 <div className="flex-1">
-                  <h4 className="font-semibold text-gray-900">{client.name}</h4>
+                  <h4 className="font-semibold text-gray-900">{client.nombre} {client.apellido}</h4>
                   <p className="text-sm text-gray-600">{client.email}</p>
                   <p className="text-sm text-gray-500 mt-1">
                     {userResponses.length} encuesta{userResponses.length !== 1 ? 's' : ''} completada{userResponses.length !== 1 ? 's' : ''}
@@ -101,14 +132,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
       <div className="space-y-4">
         {responses.map((response) => {
           const user = clients.find(u => u.id === response.userId);
-          const survey = mockSurveys.find(s => s.id === response.surveyId);
+          const survey = surveys.find(s => s.id === response.surveyId);
           
           return (
             <div key={response.id} className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-lg font-bold text-gray-900">{survey?.title}</h3>
-                  <p className="text-gray-600">Respondida por: <span className="font-medium">{user?.name}</span></p>
+                  <p className="text-gray-600">Respondida por: <span className="font-medium">{user?.nombre} {user?.apellido}</span></p>
                   <p className="text-sm text-gray-500">{new Date(response.completedAt).toLocaleDateString('es-ES', {
                     year: 'numeric',
                     month: 'long',
@@ -133,7 +164,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
                 <h4 className="text-gray-900 font-medium mb-3">Respuestas:</h4>
                 <div className="grid gap-3">
                   {response.answers.slice(0, 2).map((answer, index) => {
-                    const question = survey?.questions.find(q => q.id === answer.questionId);
+                    const question = surveys.find(s => s.id === response.surveyId)?.questions.find(q => q.id === answer.questionId);
                     return (
                       <div key={index} className="bg-gray-50 p-3 rounded-lg border border-gray-300">
                         <p className="text-gray-700 text-sm mb-1">{question?.text}</p>
@@ -172,7 +203,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
             Volver al panel
           </button>
           <div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Detalles de {user.name}</h2>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Detalles de {user.nombre} {user.apellido}</h2>
             <p className="text-gray-700 text-lg">{user.email}</p>
           </div>
         </div>
@@ -206,7 +237,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
             </div>
           ) : (
             userResponses.map((response) => {
-              const survey = mockSurveys.find(s => s.id === response.surveyId);
+              const survey = surveys.find(s => s.id === response.surveyId);
               
               return (
                 <div key={response.id} className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm">
@@ -228,7 +259,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
                     <h5 className="text-gray-900 font-medium mb-3">Respuestas completas:</h5>
                     <div className="grid gap-3">
                       {response.answers.map((answer, index) => {
-                        const question = survey?.questions.find(q => q.id === answer.questionId);
+                        const question = surveys.find(s => s.id === response.surveyId)?.questions.find(q => q.id === answer.questionId);
                         
                         return (
                           <div key={index} className="bg-gray-50 p-4 rounded-lg border border-gray-300">
