@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ClipboardList, BarChart3, User } from 'lucide-react';
-import { Survey, SurveyResponse, User as UserType } from '../types';
-import { mockSurveys, mockResponses, categories } from '../data/mockData';
+import { Survey, SurveyResponse, User as UserType, Category } from '../types';
 import { CategoryGrid } from './CategoryGrid';
 import { CategorySurveys } from './CategorySurveys';
 import { SurveyForm } from './SurveyForm';
@@ -19,8 +18,44 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
   const [currentView, setCurrentView] = useState<View>('categories');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
-  const [responses] = useState<SurveyResponse[]>(mockResponses);
+  const [responses, setResponses] = useState<SurveyResponse[]>([]);
+  const [surveys, setSurveys] = useState<Survey[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+      // Corregir la llamada a la API de categorías
+        const categoriesRes = await fetch('http://localhost:3001/api/categories');
+      
+        if (!categoriesRes.ok) {
+          throw new Error('No se pudo obtener las categorías');
+        }
+
+        const categoriesData = await categoriesRes.json();
+      
+        // Asigna los datos a las categorías
+        setCategories(categoriesData);
+
+        // Eliminar las otras llamadas de API por ahora para evitar errores, ya que no tienes las rutas definidas
+        setResponses([]); 
+        setSurveys([]); 
+
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-700">Cargando datos...</div>;
+  }
+
+  // El resto del componente permanece igual, pero ahora usa los datos de la API
   const userResponses = responses.filter(r => r.userId === user.id);
 
   const handleCategorySelect = (categoryId: string) => {
@@ -33,17 +68,38 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
     setCurrentView('survey-form');
   };
 
-  const handleSurveyComplete = (surveyId: string, answers: any[]) => {
-    console.log('Encuesta completada:', { surveyId, answers });
+  const handleSurveyComplete = async (surveyId: string, answers: any[]) => {
+    try {
+      const newResponse = {
+        surveyId,
+        userId: user.id,
+        answers,
+      };
+
+      const res = await fetch('http://localhost:3001/api/responses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newResponse),
+      });
+
+      if (res.ok) {
+        const savedResponse = await res.json();
+        setResponses(prev => [...prev, savedResponse]);
+      } else {
+        console.error('Error al guardar la respuesta de la encuesta.');
+      }
+    } catch (error) {
+      console.error('Error al enviar la respuesta:', error);
+    }
     setCurrentView('results');
   };
 
   const getCategorySurveys = (categoryId: string) => {
-    return mockSurveys.filter(s => s.category === categoryId && s.isActive);
+    return surveys.filter(s => s.category === categoryId && s.isActive);
   };
 
   const getCategoryTitle = (categoryId: string) => {
-    return categories.find(c => c.id === categoryId)?.title || '';
+    return categories.find(c => c.id === categoryId)?.nombre || '';
   };
 
   const renderContent = () => {
@@ -76,7 +132,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
         ) : null;
 
       case 'results':
-        return <ResultsView user={user} responses={userResponses} surveys={mockSurveys} />;
+        return <ResultsView user={user} responses={userResponses} surveys={surveys} />;
 
       case 'profile':
         return <ProfileForm user={user} onUpdateProfile={onUpdateProfile} />;
@@ -90,7 +146,6 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
     <div className="min-h-screen bg-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex gap-8">
-          {/* Sidebar */}
           <div className="w-64 flex-shrink-0">
             <nav className="bg-white border-2 border-gray-300 rounded-xl p-4 shadow-sm">
               <div className="space-y-2">
@@ -132,7 +187,6 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
               </div>
             </nav>
 
-            {/* Stats Card */}
             <div className="mt-6 bg-white border-2 border-gray-300 rounded-xl p-4 shadow-sm">
               <h3 className="text-sm font-semibold text-gray-800 mb-3">Mi Progreso</h3>
               <div className="space-y-2">
@@ -142,13 +196,11 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Disponibles</span>
-                  <span className="font-medium text-gray-900">{mockSurveys.length}</span>
+                  <span className="font-medium text-gray-900">{surveys.length}</span>
                 </div>
               </div>
             </div>
           </div>
-
-          {/* Main Content */}
           <div className="flex-1">
             {renderContent()}
           </div>

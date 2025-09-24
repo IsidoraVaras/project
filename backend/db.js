@@ -6,22 +6,31 @@ const config = {
   user: 'nodeapp_user',
   password: 'isidora',
   options: {
-    trustServerCertificate: true // Resuelve el error de SSL que tenías
+    trustServerCertificate: true // Resuelve el error de SSL
   }
 };
 
+// Variable para almacenar el pool de conexiones
+let pool;
+
 async function connectToDatabase() {
   try {
-    // Intentar conectar a la base de datos
-    await sql.connect(config);
+    // Si el pool ya existe, no creamos uno nuevo
+    if (pool) {
+      console.log('Ya existe una conexión a SQL Server.');
+      return pool;
+    }
+    
+    // Crea un nuevo pool de conexiones
+    pool = await sql.connect(config);
     console.log('Conexión a SQL Server exitosa!');
+    return pool;
+
   } catch (err) {
     console.error('Error al conectar a la base de datos:', err);
+    throw err; // Lanza el error para que pueda ser manejado en la aplicación
   }
 }
 
-// Llama a la función para probar la conexión al iniciar el backend
-connectToDatabase();
-
-// Exporta la configuración para que otros archivos la usen
-export { sql, connectToDatabase };
+// Exporta la función que devuelve el pool de conexiones
+export { sql, connectToDatabase as getConnection };

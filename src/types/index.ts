@@ -1,6 +1,9 @@
+// src/types/index.ts
+
 export interface User {
   id: string;
-  name: string;
+  nombre: string;
+  apellido: string;
   email: string;
   role: 'client' | 'admin';
   avatar?: string;
@@ -44,10 +47,7 @@ export interface SurveyResponse {
 
 export interface Category {
   id: string;
-  title: string;
-  description: string;
-  icon: string;
-  surveysCount: number;
+  nombre: string;
 }
 
 export interface AppState {
