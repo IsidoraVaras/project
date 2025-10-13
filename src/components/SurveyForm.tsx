@@ -1,260 +1,167 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Send, Clock, User } from 'lucide-react';
-import { Survey, Answer } from '../types';
+// src/components/SurveyForm.tsx
+
+import React, { useState, useEffect } from 'react';
+import { Survey, Question, Answer } from '../types';
+import { Loader2, AlertTriangle, ArrowLeft } from 'lucide-react';
+
+// Interfaz de datos recibidos del Backend para Preguntas
+interface DBQuestion {
+    id: number;
+    texto: string;
+    // Si la DB tiene más campos (tipo, opciones), añádelos aquí.
+}
 
 interface SurveyFormProps {
-  survey: Survey;
-  onComplete: (surveyId: string, answers: Answer[]) => void;
-  onCancel: () => void;
+    survey: Survey;
+    onComplete: (surveyId: string, answers: Answer[]) => void;
+    onCancel: () => void;
 }
 
 export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCancel }) => {
-  const [answers, setAnswers] = useState<{ [key: string]: string | number }>({});
-  const [errors, setErrors] = useState<{ [key: string]: string }>({});
-  const [currentQuestion, setCurrentQuestion] = useState(0);
+    const [questions, setQuestions] = useState<Question[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [answers, setAnswers] = useState<Record<string, string | number>>({});
 
-  const handleAnswerChange = (questionId: string, answer: string | number) => {
-    setAnswers({ ...answers, [questionId]: answer });
-    if (errors[questionId]) {
-      setErrors({ ...errors, [questionId]: '' });
+    // --- Lógica de Carga de Preguntas ---
+    useEffect(() => {
+        const fetchQuestions = async () => {
+            setLoading(true);
+            try {
+                // LLAMADA CLAVE: Obtener preguntas por ID de la encuesta
+                const response = await fetch(`http://localhost:3001/api/surveys/${survey.id}/questions`);
+
+                if (!response.ok) {
+                    throw new Error(`Error ${response.status}: No se pudieron obtener las preguntas.`);
+                }
+
+                const data: DBQuestion[] = await response.json();
+                
+                // Mapeo (DB -> Frontend Question)
+                const mappedQuestions: Question[] = data.map(dbQuestion => ({
+                    id: String(dbQuestion.id),
+                    text: dbQuestion.texto,
+                    
+                    // PLACEHOLDERS: Debes cambiar estos valores si añades campos de tipo/opciones
+                    type: 'text', 
+                    required: true,
+                    options: [],
+                }));
+
+                setQuestions(mappedQuestions);
+                setError(null);
+            } catch (err: any) {
+                console.error("Error fetching questions:", err);
+                setError('Hubo un problema al cargar las preguntas de la encuesta. Verifique la conexión o el ID.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchQuestions();
+        
+    }, [survey.id]);
+
+
+    const handleChange = (questionId: string, value: string | number) => {
+        setAnswers(prev => ({ ...prev, [questionId]: value }));
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        
+        const finalAnswers: Answer[] = Object.keys(answers).map(questionId => ({
+            questionId,
+            answer: answers[questionId],
+        }));
+
+        onComplete(survey.id, finalAnswers);
+    };
+
+
+    // --- Renderizado de Estados de Carga/Error ---
+    if (loading) {
+        return (
+            <div className="text-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto text-orange-600" />
+                <p className="mt-4 text-gray-700">Cargando preguntas de la encuesta...</p>
+            </div>
+        );
     }
-  };
 
-  const validateCurrentQuestion = () => {
-    const question = survey.questions[currentQuestion];
-    if (question.required && !answers[question.id]) {
-      setErrors({ ...errors, [question.id]: 'Esta pregunta es obligatoria' });
-      return false;
+    if (error) {
+        return (
+            <div className="text-center p-8 bg-red-100 border border-red-400 text-red-700 rounded">
+                <AlertTriangle className="h-6 w-6 mx-auto mb-3" />
+                <p className="font-bold">Error:</p>
+                <p>{error}</p>
+                <button 
+                    onClick={onCancel} 
+                    className="mt-4 text-gray-600 hover:text-gray-900 transition-colors underline"
+                >
+                    <ArrowLeft className="h-4 w-4 inline mr-1" /> Volver
+                </button>
+            </div>
+        );
     }
-    return true;
-  };
-
-  const handleNext = () => {
-    if (validateCurrentQuestion()) {
-      if (currentQuestion < survey.questions.length - 1) {
-        setCurrentQuestion(currentQuestion + 1);
-      }
-    }
-  };
-
-  const handlePrevious = () => {
-    if (currentQuestion > 0) {
-      setCurrentQuestion(currentQuestion - 1);
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
     
-    if (validateCurrentQuestion()) {
-      const formattedAnswers: Answer[] = Object.entries(answers).map(([questionId, answer]) => ({
-        questionId,
-        answer,
-      }));
-      
-      onComplete(survey.id, formattedAnswers);
+    if (questions.length === 0) {
+        return (
+            <div className="text-center p-8 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">
+                <p className="font-bold">Información:</p>
+                <p>Esta encuesta no tiene preguntas asociadas aún.</p>
+                <button 
+                    onClick={onCancel} 
+                    className="mt-4 text-gray-600 hover:text-gray-900 transition-colors underline"
+                >
+                    <ArrowLeft className="h-4 w-4 inline mr-1" /> Volver
+                </button>
+            </div>
+        );
     }
-  };
 
-  const renderQuestion = (question: any) => {
-    const error = errors[question.id];
-    const answer = answers[question.id];
-
-    switch (question.type) {
-      case 'multiple-choice':
-        return (
-          <div className="space-y-4">
-            <div className="bg-gray-50 p-4 rounded-lg border border-gray-300">
-              <pre className="whitespace-pre-wrap text-gray-800 font-medium">
-                {question.text}
-              </pre>
-            </div>
+    // --- Renderizado del Formulario (con preguntas cargadas) ---
+    return (
+        <div className="bg-white p-6 rounded-xl shadow-lg border-2 border-gray-200">
+            <h2 className="text-3xl font-extrabold text-gray-900 mb-2">{survey.title}</h2>
+            <p className="text-gray-600 mb-8">{survey.description}</p>
             
-            <div className="space-y-3">
-              {question.options?.map((option: string, index: number) => (
-                <label key={index} className="flex items-center space-x-3 cursor-pointer p-3 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors">
-                  <input
-                    type="radio"
-                    name={question.id}
-                    value={option}
-                    checked={answer === option}
-                    onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-                    className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-400"
-                  />
-                  <span className="text-gray-800">{option}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        );
-
-      case 'scale':
-        const scaleValues = [];
-        for (let i = question.scaleMin!; i <= question.scaleMax!; i++) {
-          scaleValues.push(i);
-        }
-        
-        return (
-          <div className="space-y-6">
-            <div className="bg-gray-50 p-4 rounded-lg border border-gray-300">
-              <p className="text-gray-800 font-medium">{question.text}</p>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">{question.scaleLabels?.min}</span>
-                <span className="text-sm text-gray-600">{question.scaleLabels?.max}</span>
-              </div>
-              
-              <div className="flex justify-center space-x-2">
-                {scaleValues.map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => handleAnswerChange(question.id, value)}
-                    className={`w-12 h-12 rounded-full border-2 font-medium transition-all ${
-                      answer === value
-                        ? 'bg-orange-600 border-orange-600 text-white'
-                        : 'border-gray-400 text-gray-700 hover:border-orange-500 hover:bg-orange-50'
-                    }`}
-                  >
-                    {value}
-                  </button>
+            <form onSubmit={handleSubmit} className="space-y-8">
+                {questions.map((q, index) => (
+                    <div key={q.id} className="p-4 border-l-4 border-orange-500 bg-gray-50 rounded-r-lg shadow-sm">
+                        <label className="block text-lg font-semibold text-gray-800 mb-3">
+                            {index + 1}. {q.text} {q.required && <span className="text-red-500">*</span>}
+                        </label>
+                        
+                        {/* Renderizado de Input */}
+                        {/* Se usa 'text' como input genérico por ahora. */}
+                        <input
+                            type="text" 
+                            value={answers[q.id] || ''}
+                            onChange={(e) => handleChange(q.id, e.target.value)}
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500"
+                            required={q.required}
+                        />
+                        
+                    </div>
                 ))}
-              </div>
-              
-              <div className="flex justify-between text-xs text-gray-500 px-2">
-                {scaleValues.map((value) => (
-                  <span key={value}>{value}</span>
-                ))}
-              </div>
-            </div>
-          </div>
-        );
-
-      case 'text':
-        return (
-          <div className="space-y-4">
-            <div className="bg-gray-50 p-4 rounded-lg border border-gray-300">
-              <p className="text-gray-800 font-medium">{question.text}</p>
-            </div>
-            
-            <textarea
-              value={answer || ''}
-              onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-              placeholder="Escribe tu respuesta aquí..."
-              rows={4}
-              className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-500 resize-none"
-            />
-          </div>
-        );
-
-      default:
-        return null;
-    }
-  };
-
-  const question = survey.questions[currentQuestion];
-  const progress = ((currentQuestion + 1) / survey.questions.length) * 100;
-
-  return (
-    <div className="max-w-4xl mx-auto">
-      <div className="flex items-center mb-8">
-        <button
-          onClick={onCancel}
-          className="flex items-center text-gray-600 hover:text-gray-900 mr-6 transition-colors"
-        >
-          <ArrowLeft className="h-5 w-5 mr-2" />
-          Volver
-        </button>
-        <div className="flex-1">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">{survey.title}</h2>
-          <div className="flex items-center space-x-4 text-sm text-gray-600">
-            <div className="flex items-center space-x-1">
-              <Clock className="h-4 w-4" />
-              <span>{survey.estimatedTime}</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <User className="h-4 w-4" />
-              <span>{survey.author}</span>
-            </div>
-          </div>
+                
+                <div className="flex justify-between pt-4 border-t border-gray-200">
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        type="submit"
+                        className="px-6 py-3 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 transition-colors"
+                    >
+                        Completar Encuesta
+                    </button>
+                </div>
+            </form>
         </div>
-      </div>
-
-      {/* Progress Bar */}
-      <div className="mb-8">
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-sm text-gray-600">
-            Pregunta {currentQuestion + 1} de {survey.questions.length}
-          </span>
-          <span className="text-sm text-gray-600">{Math.round(progress)}% completado</span>
-        </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
-          <div 
-            className="bg-orange-600 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          ></div>
-        </div>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-8">
-        <div className="bg-white border-2 border-gray-300 rounded-xl p-8 shadow-sm">
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Pregunta {currentQuestion + 1}
-              {question.required && <span className="text-orange-500 ml-1">*</span>}
-            </h3>
-          </div>
-          
-          {renderQuestion(question)}
-          
-          {errors[question.id] && (
-            <p className="text-red-500 text-sm mt-4 bg-red-50 p-3 rounded-lg border border-red-200">
-              {errors[question.id]}
-            </p>
-          )}
-        </div>
-        
-        <div className="flex justify-between items-center pt-6">
-          <button
-            type="button"
-            onClick={handlePrevious}
-            disabled={currentQuestion === 0}
-            className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Anterior
-          </button>
-          
-          <div className="flex space-x-4">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancelar
-            </button>
-            
-            {currentQuestion === survey.questions.length - 1 ? (
-              <button
-                type="submit"
-                className="flex items-center space-x-2 px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors"
-              >
-                <Send className="h-4 w-4" />
-                <span>Enviar Respuestas</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleNext}
-                className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors"
-              >
-                Siguiente
-              </button>
-            )}
-          </div>
-        </div>
-      </form>
-    </div>
-  );
+    );
 };

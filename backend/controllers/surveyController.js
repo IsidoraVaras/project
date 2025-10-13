@@ -3,36 +3,71 @@
 import { getConnection } from '../db.js';
 import sql from 'mssql';
 
-// ... (getCategories, permanece igual)
+// Función para obtener categorías (asumo que ya funciona)
+const getCategories = async (req, res) => {
+  try {
+    const pool = await getConnection();
+    const result = await pool.request().query('SELECT id, nombre FROM dbo.categorias'); 
+    
+    res.status(200).json(result.recordset);
+  } catch (err) {
+    console.error('Error al obtener las categorías:', err);
+    res.status(500).json({ message: 'Error interno del servidor.' });
+  }
+};
 
-// --- FUNCIÓN PARA OBTENER ENCUESTAS POR CATEGORÍA ---
+// Función para obtener encuestas por categoría (asumo que ya funciona)
 const getSurveysByCategory = async (req, res) => {
-    // Captura el ID de la categoría
     const { id } = req.params; 
-
-    // Validación
     const categoryId = parseInt(id, 10);
+
     if (isNaN(categoryId)) {
         return res.status(400).json({ message: 'ID de categoría inválido.' });
     }
 
     try {
         const pool = await getConnection();
-
-        // Consulta usando el campo id_categoria de dbo.encuestas
         const result = await pool.request()
             .input('categoryId', sql.Int, categoryId) 
-            // Utilizamos los nombres de columna exactos de dbo.encuestas (id, titulo, descripcion, id_categoria)
             .query('SELECT id, titulo, descripcion, id_categoria FROM dbo.encuestas WHERE id_categoria = @categoryId');
         
-        // Si no hay encuestas, devuelve un array vacío (200 OK)
         res.status(200).json(result.recordset);
 
     } catch (err) {
         console.error(`Error al obtener encuestas para la categoría ${id}:`, err);
-        // Si hay un error en la BD, se devuelve un 500
         res.status(500).json({ message: 'Error interno del servidor al buscar encuestas.' });
     }
 };
 
-export { getCategories, getSurveysByCategory };
+// --- NUEVA FUNCIÓN: Obtener Preguntas por ID de Encuesta ---
+const getQuestionsBySurvey = async (req, res) => {
+    const { id } = req.params; 
+    const surveyId = parseInt(id, 10);
+
+    if (isNaN(surveyId)) {
+        return res.status(400).json({ message: 'ID de encuesta inválido.' });
+    }
+
+    try {
+        const pool = await getConnection();
+
+        // Consulta la tabla dbo.preguntas filtrando por id_encuesta
+        // Solo incluimos 'id' y 'texto'. Deberás añadir más campos si tienes el tipo y las opciones.
+        const result = await pool.request()
+            .input('surveyId', sql.Int, surveyId) 
+            .query('SELECT id, texto FROM dbo.preguntas WHERE id_encuesta = @surveyId ORDER BY id');
+        
+        res.status(200).json(result.recordset);
+
+    } catch (err) {
+        console.error(`Error al obtener preguntas para la encuesta ${id}:`, err);
+        res.status(500).json({ message: 'Error interno del servidor al buscar preguntas.' });
+    }
+};
+
+// --- EXPORTACIÓN CORREGIDA (sin comas o sintaxis erróneas) ---
+export { 
+    getCategories, 
+    getSurveysByCategory, 
+    getQuestionsBySurvey 
+};
