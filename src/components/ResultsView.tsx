@@ -48,45 +48,23 @@ export const ResultsView: React.FC<ResultsViewProps> = ({ responses, surveys }) 
                   </div>
                 </div>
 
-                <div className="border-t border-gray-300 pt-4">
-                  <h4 className="text-gray-900 font-medium mb-3">Tus respuestas:</h4>
-                  <div className="grid gap-3">
-                    {response.answers.map((answer, index) => {
-                      const question = survey?.questions.find(q => q.id === answer.questionId);
-                      
-                      return (
-                        <div key={index} className="bg-gray-100 p-4 rounded-lg border border-gray-300">
-                          <p className="text-gray-700 text-sm mb-2">{question?.text}</p>
-                          <div className="flex items-center space-x-2">
-                            {question?.type === 'rating' ? (
-                              <div className="flex space-x-1">
-                                {[1, 2, 3, 4, 5].map((star) => (
-                                  <div
-                                    key={star}
-                                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                                      star <= (answer.answer as number)
-                                        ? 'bg-orange-600 text-white'
-                                        : 'bg-gray-400 text-gray-700'
-                                    }`}
-                                  >
-                                    {star}
-                                  </div>
-                                ))}
-                                <span className="text-gray-900 font-medium ml-2">
-                                  {answer.answer}/5
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-gray-900 font-medium">
-                                {answer.answer.toString()}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                {response.totals && (
+                  <div className="mb-4 bg-gray-50 border border-gray-300 rounded-lg p-4">
+                    <h4 className="text-gray-900 font-semibold mb-2">Puntajes</h4>
+                    <p className="text-gray-800">Puntaje total de escala: <span className="font-bold">{response.totals.total}</span></p>
+                    {Object.keys(response.totals.subscales || {}).length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-gray-800 font-medium">Puntaje por subescala:</p>
+                        <ul className="mt-1 list-disc list-inside text-gray-800">
+                          {Object.entries(response.totals.subscales).map(([name, score]) => (
+                            <li key={name}><span className="font-medium">{name}:</span> {score}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
+                {/* Vista usuario: no mostramos detalle por pregunta */}
               </div>
             );
           })}

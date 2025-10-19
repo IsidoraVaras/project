@@ -24,36 +24,37 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const categoriesRes = await fetch('http://localhost:3001/api/categories');
-      
-        if (!categoriesRes.ok) {
-          throw new Error('No se pudo obtener las categorías');
-        }
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [categoriesRes, resultsRes] = await Promise.all([
+          fetch('http://localhost:3001/api/categories'),
+          fetch(`http://localhost:3001/api/users/${user.id}/results`),
+        ]);
 
-        const categoriesData: Category[] = await categoriesRes.json();
-      
-        setCategories(categoriesData);
+        if (!categoriesRes.ok) throw new Error('No se pudo obtener las categorías');
+        if (!resultsRes.ok) throw new Error('No se pudo obtener tus resultados');
 
-        setResponses([]); 
-        setSurveys([]); 
+        const categoriesData: Category[] = await categoriesRes.json();
+        const resultsData: SurveyResponse[] = await resultsRes.json();
 
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
+        setCategories(categoriesData);
+        setResponses(resultsData);
+        setSurveys([]);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [user.id]);
 
   if (loading) {
     return <div className="text-center py-12 text-gray-700">Cargando datos...</div>;
   }
 
-  const userResponses = responses.filter(r => r.userId === user.id);
+  const userResponses = responses.filter(r => String(r.userId) === String(user.id));
 
   const handleCategorySelect = (categoryId: string) => {
     // CAMBIO 2: Convertir el ID de string a número antes de guardarlo en el estado
