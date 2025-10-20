@@ -1,11 +1,12 @@
 // backend/routes/userRoutes.js
 
 import express from 'express';
-import { registerUser, loginUser } from '../controllers/userController.js';
+import { registerUser, loginUser, listUsers } from '../controllers/userController.js';
 import {
   getCategories,
   getSurveysByCategory,
   getQuestionsBySurvey,
+  getAllSurveys,
 } from '../controllers/surveyController.js';
 import { getResponses, createResponse, getResultsByUser } from '../controllers/responseController.js';
 
@@ -14,11 +15,13 @@ const router = express.Router();
 // Usuarios
 router.post('/register', registerUser);
 router.post('/login', loginUser);
+router.get('/users', listUsers);
 
 // Encuestas y preguntas
 router.get('/categories', getCategories);
 router.get('/categories/:id/surveys', getSurveysByCategory);
 router.get('/surveys/:id/questions', getQuestionsBySurvey);
+router.get('/surveys', getAllSurveys);
 
 // Respuestas
 router.get('/responses', getResponses);

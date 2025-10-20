@@ -153,6 +153,24 @@ const createResponse = async (req, res) => {
     const totals = await calculateScores(numericSurveyId, answers);
     const subscaleRows = await calculateSubscaleRows(numericSurveyId, answers);
 
+    // Clasificación especial para Rosenberg (10 ítems, 1..4)
+    try {
+      const info = await pool
+        .request()
+        .input('surveyId', sql.Int, numericSurveyId)
+        .query('SELECT titulo FROM dbo.encuestas WHERE id = @surveyId');
+      const titulo = (info.recordset?.[0]?.titulo || '').toLowerCase();
+      if (titulo.includes('rosenberg')) {
+        const t = totals.total || 0;
+        let classification = 'Autoestima moderada';
+        if (t <= 25) classification = 'Baja autoestima';
+        else if (t >= 36) classification = 'Alta autoestima';
+        totals.classification = classification;
+      }
+    } catch (_) {
+      // si falla, seguimos sin clasificación
+    }
+
     // Transacción: insertar resultado y respuestas
     const tx = new sql.Transaction(pool);
     await tx.begin();
