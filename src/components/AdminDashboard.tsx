@@ -28,11 +28,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
         
         const clientsData = await clientsRes.json();
         const responsesData = await responsesRes.json();
-        const surveysData = await surveysRes.json();
+        const surveysRaw = await surveysRes.json();
 
         setClients(clientsData.filter((u: User) => u.role === 'client'));
         setResponses(responsesData);
-        setSurveys(surveysData);
+        // Mapear encuestas del backend a la interfaz Survey
+        const mappedSurveys: Survey[] = surveysRaw.map((s: any) => ({
+          id: String(s.id),
+          title: s.titulo,
+          description: s.descripcion || '',
+          category: String(s.id_categoria),
+          questions: [],
+          createdAt: new Date(),
+          isActive: true,
+          author: s.categoria_nombre || 'Admin',
+          estimatedTime: '5-15 min',
+        }));
+        setSurveys(mappedSurveys);
 
       } catch (error) {
         console.error('Error fetching admin data:', error);
@@ -48,7 +60,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
   }
   
   const getResponsesForUser = (userId: string) => {
-    return responses.filter(r => r.userId === userId);
+    return responses.filter(r => String(r.userId) === String(userId));
   };
 
   const renderOverview = () => (
@@ -93,7 +105,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
       <div className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm">
         <h3 className="text-xl font-bold text-gray-900 mb-6">Participantes y sus Encuestas</h3>
         <div className="space-y-4">
-          {clients.map((client) => {
+          {clients.filter(c => getResponsesForUser(c.id).length > 0).map((client) => {
             const userResponses = getResponsesForUser(client.id);
             return (
               <div key={client.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-300">
@@ -102,6 +114,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
                   <p className="text-sm text-gray-600">{client.email}</p>
                   <p className="text-sm text-gray-500 mt-1">
                     {userResponses.length} encuesta{userResponses.length !== 1 ? 's' : ''} completada{userResponses.length !== 1 ? 's' : ''}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Última: {new Date(Math.max(...userResponses.map(r => new Date(r.completedAt as any).getTime()))).toLocaleDateString('es-ES')}
                   </p>
                 </div>
                 <button
@@ -244,6 +259,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
                   <div className="mb-4">
                     <h4 className="text-lg font-bold text-gray-900">{survey?.title}</h4>
                     <p className="text-gray-600">{survey?.description}</p>
+                    <p className="text-sm text-gray-600 mt-1">Categoría: {survey?.author || survey?.category}</p>
                     <p className="text-sm text-gray-500 mt-2">
                       Completada el {new Date(response.completedAt).toLocaleDateString('es-ES', {
                         year: 'numeric',
@@ -256,14 +272,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
                   </div>
 
                   <div className="border-t border-gray-300 pt-4">
+                    {response.totals && (
+                      <div className="mb-4 bg-gray-50 p-3 rounded border">
+                        <p className="text-gray-800">
+                          Puntaje total: <span className="font-semibold">{response.totals.total}</span>
+                          {response.totals.classification && (
+                            <span className="ml-2">({response.totals.classification})</span>
+                          )}
+                        </p>
+                      </div>
+                    )}
                     <h5 className="text-gray-900 font-medium mb-3">Respuestas completas:</h5>
                     <div className="grid gap-3">
                       {response.answers.map((answer, index) => {
                         const question = surveys.find(s => s.id === response.surveyId)?.questions.find(q => q.id === answer.questionId);
+                        const questionText = question?.text || `Pregunta ${answer.questionId}`;
                         
                         return (
                           <div key={index} className="bg-gray-50 p-4 rounded-lg border border-gray-300">
-                            <p className="text-gray-700 text-sm mb-2 font-medium">{question?.text}</p>
+                            <p className="text-gray-700 text-sm mb-2 font-medium">{questionText}</p>
                             <div className="flex items-center space-x-2">
                               {question?.type === 'scale' ? (
                                 <div className="flex items-center space-x-2">

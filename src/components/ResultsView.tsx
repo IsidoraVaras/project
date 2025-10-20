@@ -52,6 +52,11 @@ export const ResultsView: React.FC<ResultsViewProps> = ({ responses, surveys }) 
                   <div className="mb-4 bg-gray-50 border border-gray-300 rounded-lg p-4">
                     <h4 className="text-gray-900 font-semibold mb-2">Puntajes</h4>
                     <p className="text-gray-800">Puntaje total de escala: <span className="font-bold">{response.totals.total}</span></p>
+                    {response.totals.classification && (
+                      <p className="text-gray-800 mt-1">
+                        Interpretación: <span className="font-semibold">{response.totals.classification}</span>
+                      </p>
+                    )}
                     {Object.keys(response.totals.subscales || {}).length > 0 && (
                       <div className="mt-2">
                         <p className="text-gray-800 font-medium">Puntaje por subescala:</p>

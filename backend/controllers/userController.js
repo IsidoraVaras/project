@@ -96,3 +96,24 @@ const loginUser = async (req, res) => {
 };
 
 export { registerUser, loginUser };
+
+// --- NUEVO: listar usuarios para panel admin ---
+export const listUsers = async (_req, res) => {
+  try {
+    const pool = await getConnection();
+    const rs = await pool.request().query(
+      'SELECT id, nombre, apellido, email, rol FROM usuarios'
+    );
+    const users = rs.recordset.map((u) => ({
+      id: String(u.id),
+      nombre: u.nombre,
+      apellido: u.apellido,
+      email: u.email,
+      role: u.rol === 'admin' ? 'admin' : 'client',
+    }));
+    res.status(200).json(users);
+  } catch (err) {
+    console.error('Error al listar usuarios:', err);
+    res.status(500).json({ message: 'Error interno del servidor.' });
+  }
+};

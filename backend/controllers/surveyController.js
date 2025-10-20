@@ -120,3 +120,21 @@ const getQuestionsBySurvey = async (req, res) => {
 
 export { getCategories, getSurveysByCategory, getQuestionsBySurvey };
 
+// --- NUEVO: listar todas las encuestas ---
+export const getAllSurveys = async (_req, res) => {
+  try {
+    const pool = await getConnection();
+    const result = await pool
+      .request()
+      .query(
+        `SELECT e.id, e.titulo, e.descripcion, e.id_categoria, c.nombre AS categoria_nombre
+         FROM dbo.encuestas e
+         LEFT JOIN dbo.categorias c ON c.id = e.id_categoria
+         ORDER BY e.id`
+      );
+    res.status(200).json(result.recordset);
+  } catch (err) {
+    console.error('Error al listar encuestas:', err);
+    res.status(500).json({ message: 'Error interno del servidor.' });
+  }
+};

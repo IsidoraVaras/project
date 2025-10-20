@@ -48,6 +48,7 @@ export interface Answer {
 export interface SurveyTotals {
   total: number;
   subscales: Record<string, number>;
+  classification?: string; // e.g., Rosenberg: Baja/Moderada/Alta
 }
 
 export interface SurveyResponse {
