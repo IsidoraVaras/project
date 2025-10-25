@@ -50,6 +50,7 @@ export interface SurveyTotals {
   total: number;
   subscales: Record<string, number>;
   classification?: string; // e.g., Rosenberg: Baja/Moderada/Alta
+  avg?: number; // promedio general si aplica (e.g., MSPSS)
 }
 
 export interface SurveyResponse {

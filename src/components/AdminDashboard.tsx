@@ -301,12 +301,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
                   <div className="border-t border-gray-300 pt-4">
                     {response.totals && (
                       <div className="mb-4 bg-gray-50 p-3 rounded border">
-                        <p className="text-gray-800">
-                          Puntaje total: <span className="font-semibold">{response.totals.total}</span>
-                          {response.totals.classification && (
-                            <span className="ml-2">({response.totals.classification})</span>
+                        <div className="text-gray-800">
+                          <p>
+                            Puntaje total: <span className="font-semibold">{response.totals.total}</span>
+                            {response.totals.classification && (
+                              <span className="ml-2">({response.totals.classification})</span>
+                            )}
+                          </p>
+                          {typeof response.totals.avg !== 'undefined' && (
+                            <p>Promedio: <span className="font-semibold">{response.totals.avg}</span></p>
                           )}
-                        </p>
+                        </div>
                       </div>
                     )}
                     <h5 className="text-gray-900 font-medium mb-3">Respuestas completas:</h5>
