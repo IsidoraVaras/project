@@ -13,12 +13,13 @@ export interface QuestionOption {
   label: string;
   value: number | string;
   orden?: number;
+  group?: string; // para escalas con subcomponentes (e.g., lsas: miedo/evitacion)
 }
 
 export interface Question {
   id: string;
   text: string;
-  type: 'multiple-choice' | 'text' | 'rating' | 'yes-no' | 'scale';
+  type: 'multiple-choice' | 'text' | 'rating' | 'yes-no' | 'scale' | 'lsas';
   options?: QuestionOption[];
   required: boolean;
   scaleMin?: number;

@@ -16,6 +16,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
+  const [surveyQuestions, setSurveyQuestions] = useState<Record<string, {id: string; text: string}[]>>({});
 
   useEffect(() => {
     const fetchData = async () => {
@@ -54,6 +55,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
     };
     fetchData();
   }, []);
+
+  // Cargar textos de preguntas para el usuario seleccionado (muestra en detalle)
+  useEffect(() => {
+    const loadQuestions = async () => {
+      if (currentView !== 'user-detail' || !selectedUserId) return;
+      const userResponses = responses.filter(r => String(r.userId) === String(selectedUserId));
+      const surveyIds = Array.from(new Set(userResponses.map(r => String(r.surveyId))));
+      const entries = await Promise.all(
+        surveyIds.map(async (sid) => {
+          try {
+            const res = await fetch(`http://localhost:3001/api/surveys/${sid}/questions`);
+            if (!res.ok) return [sid, []] as const;
+            const data = await res.json();
+            const arr = (data || []).map((q: any) => ({ id: String(q.id), text: q.texto }));
+            return [sid, arr] as const;
+          } catch {
+            return [sid, []] as const;
+          }
+        })
+      );
+      const map: Record<string, {id: string; text: string}[]> = {};
+      for (const [sid, qs] of entries) map[String(sid)] = qs;
+      setSurveyQuestions(map);
+    };
+    loadQuestions();
+  }, [currentView, selectedUserId, responses]);
 
   if (loading) {
     return <div className="text-center py-12">Cargando datos del panel de administración...</div>;
@@ -284,41 +311,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
                     )}
                     <h5 className="text-gray-900 font-medium mb-3">Respuestas completas:</h5>
                     <div className="grid gap-3">
-                      {response.answers.map((answer, index) => {
-                        const question = surveys.find(s => s.id === response.surveyId)?.questions.find(q => q.id === answer.questionId);
-                        const questionText = question?.text || `Pregunta ${answer.questionId}`;
-                        
-                        return (
-                          <div key={index} className="bg-gray-50 p-4 rounded-lg border border-gray-300">
-                            <p className="text-gray-700 text-sm mb-2 font-medium">{questionText}</p>
-                            <div className="flex items-center space-x-2">
-                              {question?.type === 'scale' ? (
-                                <div className="flex items-center space-x-2">
-                                  <span className="text-gray-900 font-bold text-lg">
-                                    {answer.answer}/{question.scaleMax}
-                                  </span>
-                                  <div className="flex space-x-1">
-                                    {Array.from({ length: question.scaleMax! }, (_, i) => (
-                                      <div
-                                        key={i}
-                                        className={`w-3 h-3 rounded-full ${
-                                          i < (answer.answer as number)
-                                            ? 'bg-orange-500'
-                                            : 'bg-gray-300'
-                                        }`}
-                                      />
-                                    ))}
-                                  </div>
-                                </div>
-                              ) : (
-                                <span className="text-gray-900 font-medium">
-                                  {answer.answer.toString()}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                      {(() => {
+                        const groups: Record<string, { miedo?: any; evitacion?: any; raw: any[] }> = {};
+                        for (const a of response.answers) {
+                          const [base, sub] = String(a.questionId).split('|');
+                          if (!groups[base]) groups[base] = { raw: [] };
+                          if (sub === 'miedo') groups[base].miedo = a.answer;
+                          else if (sub === 'evitacion') groups[base].evitacion = a.answer;
+                          else groups[base].raw.push(a);
+                        }
+                        const items = Object.entries(groups);
+                        const arr: JSX.Element[] = [];
+                        const qArr = surveyQuestions[String(response.surveyId)] || [];
+                        const getText = (baseId: string) => qArr.find(q => q.id === baseId)?.text || `Ítem ${baseId}`;
+
+                        items.forEach(([baseId, g], index) => {
+                          if (g.miedo !== undefined || g.evitacion !== undefined) {
+                            arr.push(
+                              <div key={`lsas-${baseId}-${index}`} className="bg-gray-50 p-4 rounded-lg border border-gray-300">
+                                <p className="text-gray-700 text-sm mb-2 font-medium">{getText(baseId)}</p>
+                                <p className="text-gray-900 font-medium">Miedo/ansiedad: {String(g.miedo ?? '-') } | Evitación: {String(g.evitacion ?? '-')}</p>
+                              </div>
+                            );
+                          }
+                          g.raw.forEach((answer, i) => {
+                            arr.push(
+                              <div key={`raw-${baseId}-${i}`} className="bg-gray-50 p-4 rounded-lg border border-gray-300">
+                                <p className="text-gray-700 text-sm mb-2 font-medium">{getText(baseId)}</p>
+                                <span className="text-gray-900 font-medium">{String(answer.answer)}</span>
+                              </div>
+                            );
+                          });
+                        });
+                        return arr;
+                      })()}
                     </div>
                   </div>
                 </div>
