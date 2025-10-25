@@ -23,7 +23,7 @@ async function columnExists(pool, tableSchema, tableName, columnName) {
 async function calculateScores(surveyId, answers) {
   const pool = await getConnection();
 
-  // 1) Mapear id_pregunta -> índice (1..N) en la encuesta
+  // 1) Mapear id_pregunta -> ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­ndice (1..N) en la encuesta
   const questionsResult = await pool
     .request()
     .input('surveyId', sql.Int, surveyId)
@@ -50,7 +50,7 @@ async function calculateScores(surveyId, answers) {
        ORDER BY id`
     );
 
-  // 3) Preparar respuestas numéricas
+  // 3) Preparar respuestas numÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©ricas
   const numericAnswers = answers
     .map((a) => ({ qid: String(a.questionId), value: Number(a.answer) }))
     .filter((a) => !Number.isNaN(a.value));
@@ -58,6 +58,18 @@ async function calculateScores(surveyId, answers) {
   const total = numericAnswers.reduce((sum, a) => sum + a.value, 0);
 
   const subscales = {};
+  // LSAS: sumar por sufijos si existen
+  const fearTotal = numericAnswers
+    .filter((a) => a.qid.toLowerCase().includes('|miedo'))
+    .reduce((s, a) => s + a.value, 0);
+  const avoidTotal = numericAnswers
+    .filter((a) => a.qid.toLowerCase().includes('|evitacion'))
+    .reduce((s, a) => s + a.value, 0);
+  if (fearTotal > 0 || avoidTotal > 0) {
+    subscales['Miedo/ansiedad'] = fearTotal;
+    subscales['EvitaciÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n'] = avoidTotal;
+  }
+
   for (const row of subscalesResult.recordset || []) {
     const [startStr, endStr] = String(row.rango_items).split('-');
     const start = parseInt(startStr, 10);
@@ -71,7 +83,11 @@ async function calculateScores(surveyId, answers) {
       return sum;
     }, 0);
 
-    subscales[row.nombre] = score;
+    if (typeof subscales[row.nombre] === 'undefined') {
+      subscales[row.nombre] = score;
+    } else {
+      subscales[row.nombre] += score;
+    }
   }
 
   return { total, subscales };
@@ -141,7 +157,7 @@ const createResponse = async (req, res) => {
       Number.isNaN(numericUserId) ||
       !Array.isArray(answers)
     ) {
-      return res.status(400).json({ message: 'Payload inválido.' });
+      return res.status(400).json({ message: 'Payload invÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡lido.' });
     }
 
     const pool = await getConnection();
@@ -153,7 +169,7 @@ const createResponse = async (req, res) => {
     const totals = await calculateScores(numericSurveyId, answers);
     const subscaleRows = await calculateSubscaleRows(numericSurveyId, answers);
 
-    // Clasificación especial para Rosenberg (10 ítems, 1..4)
+    // ClasificaciÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n especial para Rosenberg (10 ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­tems, 1..4)
     try {
       const info = await pool
         .request()
@@ -168,10 +184,10 @@ const createResponse = async (req, res) => {
         totals.classification = classification;
       }
     } catch (_) {
-      // si falla, seguimos sin clasificación
+      // si falla, seguimos sin clasificaciÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n
     }
 
-    // Transacción: insertar resultado y respuestas
+    // TransacciÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n: insertar resultado y respuestas
     const tx = new sql.Transaction(pool);
     await tx.begin();
     try {
@@ -202,7 +218,7 @@ const createResponse = async (req, res) => {
       }
 
       // Insertar puntajes por subescala si la tabla existe
-      // Verificar existencia rápida de la tabla
+      // Verificar existencia rÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡pida de la tabla
       const hasSubscaleTable = (await reqTx
         .query("SELECT 1 AS ok FROM sys.objects WHERE object_id = OBJECT_ID('dbo.resultados_subescalas') AND type = 'U'")).recordset.length > 0;
       if (hasSubscaleTable && Array.isArray(subscaleRows)) {
@@ -220,17 +236,23 @@ const createResponse = async (req, res) => {
       // Insert respuestas (para admin)
       for (const a of answers) {
         const respuestaStr = String(a.answer);
-        const qId = parseInt(String(a.questionId), 10);
+        const qKey = String(a.questionId);
+        const [qidStr, subLabelRaw] = qKey.split('|');
+        const subLabel = subLabelRaw ? subLabelRaw.toLowerCase() : null;
+        const qId = parseInt(qidStr, 10);
         if (Number.isNaN(qId)) continue;
 
-        // Identificar opción y valor numérico
+        // Identificar opciÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n y valor numÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©rico, respetando subescala cuando aplique
         const numericVal = Number(a.answer);
         let optionId = null;
         if (!Number.isNaN(numericVal)) {
-          const optRes = await new sql.Request(tx)
-            .input('qid', sql.Int, qId)
-            .input('val', sql.Int, numericVal)
-            .query('SELECT TOP 1 id FROM dbo.opciones_respuesta WHERE id_pregunta = @qid AND valor = @val');
+          let query = 'SELECT TOP 1 id FROM dbo.opciones_respuesta WHERE id_pregunta = @qid AND valor = @val';
+          const req = new sql.Request(tx).input('qid', sql.Int, qId).input('val', sql.Int, numericVal);
+          if (subLabel) {
+            query += ' AND (LOWER(subescala) = @sub OR subescala = @sub)';
+            req.input('sub', sql.NVarChar, subLabel);
+          }
+          const optRes = await req.query(query);
           optionId = optRes.recordset[0]?.id ?? null;
         }
 
@@ -271,6 +293,32 @@ const createResponse = async (req, res) => {
 
       await tx.commit();
 
+      // Clasificación para LSAS y Rosenberg basada en título o subtotales presentes
+      try {
+        const info = await pool
+          .request()
+          .input('surveyId', sql.Int, numericSurveyId)
+          .query('SELECT titulo FROM dbo.encuestas WHERE id = @surveyId');
+        const titulo = (info.recordset?.[0]?.titulo || '').toLowerCase();
+        if (titulo.includes('rosenberg')) {
+          const t = totals.total || 0;
+          let classification = 'Autoestima moderada';
+          if (t <= 25) classification = 'Baja autoestima';
+          else if (t >= 36) classification = 'Alta autoestima';
+          totals.classification = classification;
+        } else if (
+          titulo.includes('liebow') ||
+          titulo.includes('lsas') ||
+          (totals.subscales && (typeof totals.subscales['Miedo/ansiedad'] !== 'undefined' || typeof totals.subscales['Evitación'] !== 'undefined'))
+        ) {
+          const t = totals.total || 0;
+          let classification = 'Leve ansiedad social';
+          if (t >= 82) classification = 'Grave Ansiedad Social';
+          else if (t >= 52) classification = 'Moderada Ansiedad social';
+          totals.classification = classification;
+        }
+      } catch {}
+
       const responsePayload = {
         id: String(resultadoId),
         surveyId: String(surveyId),
@@ -310,11 +358,11 @@ const getResponses = async (_req, res) => {
           .request()
           .input('rid', sql.Int, row.id)
           .query(
-            'SELECT respuesta, id_pregunta FROM dbo.respuestas WHERE id_resultado = @rid ORDER BY id'
+            'SELECT r.respuesta, r.id_pregunta, r.valor_numerico, r.id_opcion_respuesta, o.subescala FROM dbo.respuestas r LEFT JOIN dbo.opciones_respuesta o ON o.id = r.id_opcion_respuesta WHERE r.id_resultado = @rid ORDER BY r.id'
           );
         answers = ans.recordset.map((r) => ({ questionId: String(r.id_pregunta), answer: r.respuesta }));
       } else {
-        // Fallback: sin FK, traer todas las respuestas de ese usuario para esa encuesta (posible mezcla si hay múltiples intentos)
+        // Fallback: sin FK, traer todas las respuestas de ese usuario para esa encuesta (posible mezcla si hay mÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âºltiples intentos)
         const ans = await pool
           .request()
           .input('uid', sql.Int, row.id_usuario)
@@ -331,6 +379,16 @@ const getResponses = async (_req, res) => {
 
       // Recalcular totales para devolverlos al frontend
       const totals = await calculateScores(row.id_encuesta, answers);
+      // Añadir clasificación rápida para LSAS si detectamos sus subescalas
+      try {
+        if (totals && totals.subscales && (typeof totals.subscales['Miedo/ansiedad'] !== 'undefined' || typeof totals.subscales['Evitación'] !== 'undefined')) {
+          const t = totals.total || 0;
+          let classification = 'Leve ansiedad social';
+          if (t >= 82) classification = 'Grave Ansiedad Social';
+          else if (t >= 52) classification = 'Moderada Ansiedad social';
+          totals.classification = classification;
+        }
+      } catch {}
 
       list.push({
         id: String(row.id),
@@ -356,7 +414,7 @@ const getResultsByUser = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = parseInt(id, 10);
-    if (Number.isNaN(userId)) return res.status(400).json({ message: 'ID de usuario inválido' });
+    if (Number.isNaN(userId)) return res.status(400).json({ message: 'ID de usuario invÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡lido' });
 
     const pool = await getConnection();
     const hasTotalCol = await columnExists(pool, 'dbo', 'resultados', 'puntaje_total');
@@ -380,10 +438,21 @@ const getResultsByUser = async (req, res) => {
         const ans = await pool
           .request()
           .input('rid', sql.Int, row.id)
-          .query('SELECT id_pregunta, respuesta FROM dbo.respuestas WHERE id_resultado = @rid');
+          .query('SELECT r.id_pregunta, r.respuesta, r.valor_numerico, o.subescala FROM dbo.respuestas r LEFT JOIN dbo.opciones_respuesta o ON o.id = r.id_opcion_respuesta WHERE r.id_resultado = @rid');
         const answers = ans.recordset.map((r) => ({ questionId: String(r.id_pregunta), answer: r.respuesta }));
         totals = await calculateScores(row.id_encuesta, answers);
       }
+
+      // Clasificación rápida si es LSAS (por subescala) o por título (consulta puntual)
+      try {
+        if (totals && totals.subscales && (typeof totals.subscales['Miedo/ansiedad'] !== 'undefined' || typeof totals.subscales['Evitación'] !== 'undefined')) {
+          const t = totals.total || 0;
+          let classification = 'Leve ansiedad social';
+          if (t >= 82) classification = 'Grave Ansiedad Social';
+          else if (t >= 52) classification = 'Moderada Ansiedad social';
+          totals.classification = classification;
+        }
+      } catch {}
 
       list.push({
         id: String(row.id),

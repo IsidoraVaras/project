@@ -61,9 +61,16 @@ export const ResultsView: React.FC<ResultsViewProps> = ({ responses, surveys }) 
                       <div className="mt-2">
                         <p className="text-gray-800 font-medium">Puntaje por subescala:</p>
                         <ul className="mt-1 list-disc list-inside text-gray-800">
-                          {Object.entries(response.totals.subscales).map(([name, score]) => (
-                            <li key={name}><span className="font-medium">{name}:</span> {score}</li>
-                          ))}
+                          {Object.entries(response.totals.subscales).map(([name, score]) => {
+                            const raw = String(name || '');
+                            const lower = raw.toLowerCase();
+                            let display = raw.replace(/[^\p{L}\p{N}\s\/_\-áéíóúÁÉÍÓÚñÑ]/gu, '');
+                            if (lower.includes('evit')) display = 'Evitación';
+                            if (lower.includes('miedo') || lower.includes('ansiedad')) display = 'Miedo/ansiedad';
+                            return (
+                              <li key={raw}><span className="font-medium">{display}:</span> {score}</li>
+                            );
+                          })}
                         </ul>
                       </div>
                     )}

@@ -48,16 +48,25 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
         const mappedQuestions: Question[] = data.map((dbQuestion) => {
           const hasOptions = Array.isArray(dbQuestion.opciones) && dbQuestion.opciones.length > 0;
           let options: QuestionOption[] | undefined;
+          let type: Question['type'] = 'text';
           if (hasOptions) {
+            const subescales = new Set(
+              dbQuestion.opciones!.map((o) => (o.subescala || '').toLowerCase())
+            );
+            if (subescales.has('miedo') || subescales.has('evitacion')) {
+              type = 'lsas';
+            } else {
+              type = 'multiple-choice';
+            }
             options = dbQuestion.opciones!
               .sort((a, b) => a.orden - b.orden)
-              .map((o) => ({ label: o.etiqueta, value: o.valor, orden: o.orden }));
+              .map((o) => ({ label: o.etiqueta, value: o.valor, orden: o.orden, group: o.subescala || undefined }));
           }
 
           return {
             id: String(dbQuestion.id),
             text: dbQuestion.texto,
-            type: hasOptions ? 'multiple-choice' : 'text',
+            type,
             required: true,
             options,
           };
@@ -131,13 +140,63 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
       <p className="text-gray-600 mb-8">{survey.description}</p>
 
       <form onSubmit={handleSubmit} className="space-y-8">
+        {questions.some(q => q.type === 'lsas') && (
+          <div className="p-4 border rounded bg-orange-50 text-sm text-gray-800">
+            <p className="font-semibold mb-1">Escala de Ansiedad Social de Liebowitz (LSAS)</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="font-medium">Miedo o ansiedad</p>
+                <p>0 = Nada de miedo o ansiedad</p>
+                <p>1 = Un poco de miedo o ansiedad</p>
+                <p>2 = Bastante miedo o ansiedad</p>
+                <p>3 = Mucho miedo o ansiedad</p>
+              </div>
+              <div>
+                <p className="font-medium">Evitación</p>
+                <p>0 = Nunca lo evito (0%)</p>
+                <p>1 = En ocasiones lo evito (1–33%)</p>
+                <p>2 = Frecuentemente lo evito (33–67%)</p>
+                <p>3 = Habitualmente lo evito (67–100%)</p>
+              </div>
+            </div>
+          </div>
+        )}
         {questions.map((q, index) => (
           <div key={q.id} className="p-4 border-l-4 border-orange-500 bg-gray-50 rounded-r-lg shadow-sm">
             <label className="block text-lg font-semibold text-gray-800 mb-3">
               {index + 1}. {q.text} {q.required && <span className="text-red-500">*</span>}
             </label>
 
-            {q.type === 'multiple-choice' && q.options && q.options.length > 0 ? (
+            {q.type === 'lsas' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Miedo/ansiedad (0–3)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={3}
+                    step={1}
+                    value={answers[`${q.id}|miedo`] ?? ''}
+                    onChange={(e) => handleChange(`${q.id}|miedo`, Number(e.target.value))}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500"
+                    required={q.required}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Evitación (0–3)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={3}
+                    step={1}
+                    value={answers[`${q.id}|evitacion`] ?? ''}
+                    onChange={(e) => handleChange(`${q.id}|evitacion`, Number(e.target.value))}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500"
+                    required={q.required}
+                  />
+                </div>
+              </div>
+            ) : q.type === 'multiple-choice' && q.options && q.options.length > 0 ? (
               <div className="space-y-2">
                 {q.options.map((opt) => (
                   <label key={`${q.id}-${opt.value}`} className="flex items-center space-x-3">
@@ -185,4 +244,3 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
     </div>
   );
 };
-
