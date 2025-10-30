@@ -1,407 +1,416 @@
-// backend/controllers/responseController.js
-import { getConnection } from '../db.js';
-import sql from 'mssql';
-
-// Utilidad: verificar si existe una columna
-async function columnExists(pool, schema, table, column) {
-  const q = `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=@s AND TABLE_NAME=@t AND COLUMN_NAME=@c`;
-  const rs = await pool
-    .request()
-    .input('s', sql.NVarChar, schema)
-    .input('t', sql.NVarChar, table)
-    .input('c', sql.NVarChar, column)
-    .query(q);
-  return rs.recordset.length > 0;
-}
-
-// Calcula suma total y subescalas (si existen reglas en dbo.subescalas). Tambi茅n reconoce LSAS por sufijos |miedo y |evitacion en questionId.
-async function calculateScores(surveyId, answers) {
-  const pool = await getConnection();
-
-  // Orden de preguntas (para usar posibles rangos en subescalas)
-  const qRes = await pool
-    .request()
-    .input('sid', sql.Int, surveyId)
-    .query(`SELECT p.id FROM dbo.preguntas p WHERE p.id_encuesta=@sid ORDER BY p.id`);
-
-  const orderMap = new Map(); // id -> 铆ndice (1..N)
-  qRes.recordset.forEach((row, idx) => orderMap.set(String(row.id), idx + 1));
-
-  // Respuestas num茅ricas
-  const numericAnswers = (answers || [])
-    .map(a => ({ qid: String(a.questionId), value: Number(a.answer) }))
-    .filter(a => !Number.isNaN(a.value));
-
-  const total = numericAnswers.reduce((s, a) => s + a.value, 0);
-
-  const subscales = {};
-
-  // Reconocer LSAS por sufijos en questionId
-  const fear = numericAnswers
-    .filter(a => a.qid.toLowerCase().includes('|miedo'))
-    .reduce((s, a) => s + a.value, 0);
-  const avoid = numericAnswers
-    .filter(a => a.qid.toLowerCase().includes('|evitacion'))
-    .reduce((s, a) => s + a.value, 0);
-  if (fear > 0 || avoid > 0) {
-    subscales['Miedo/ansiedad'] = fear;
-    subscales['Evitaci贸n'] = avoid;
-  }
-
-  // Subescalas por rango desde la BD
-  const ssRes = await pool
-    .request()
-    .input('sid', sql.Int, surveyId)
-    .query(`SELECT id, nombre, rango_items FROM dbo.subescalas WHERE id_encuesta=@sid ORDER BY id`);
-
-  for (const row of ssRes.recordset || []) {
-    const [a, b] = String(row.rango_items).split('-');
-    const start = parseInt(a, 10);
-    const end = parseInt(b, 10);
-    if (Number.isNaN(start) || Number.isNaN(end)) continue;
-
-    const score = numericAnswers.reduce((s, ans) => {
-      const baseId = ans.qid.split('|')[0];
-      const idx = orderMap.get(baseId);
-      if (!idx) return s;
-      return (idx >= start && idx <= end) ? s + ans.value : s;
-    }, 0);
-
-    if (typeof subscales[row.nombre] === 'undefined') subscales[row.nombre] = score;
-    else subscales[row.nombre] += score;
-  }
-
-  return { total, subscales };
-}
-
-// Para persistir detalle de subescalas (si existe tabla resultados_subescalas)
-async function calculateSubscaleRows(surveyId, answers) {
-  const pool = await getConnection();
-
-  const qRes = await pool
-    .request()
-    .input('sid', sql.Int, surveyId)
-    .query(`SELECT p.id FROM dbo.preguntas p WHERE p.id_encuesta=@sid ORDER BY p.id`);
-  const orderMap = new Map();
-  qRes.recordset.forEach((row, idx) => orderMap.set(String(row.id), idx + 1));
-
-  const numericAnswers = (answers || [])
-    .map(a => ({ qid: String(a.questionId), value: Number(a.answer) }))
-    .filter(a => !Number.isNaN(a.value));
-
-  const ssRes = await pool
-    .request()
-    .input('sid', sql.Int, surveyId)
-    .query(`SELECT id, nombre, rango_items FROM dbo.subescalas WHERE id_encuesta=@sid ORDER BY id`);
-
-  const rows = [];
-  for (const row of ssRes.recordset || []) {
-    const [a, b] = String(row.rango_items).split('-');
-    const start = parseInt(a, 10);
-    const end = parseInt(b, 10);
-    if (Number.isNaN(start) || Number.isNaN(end)) continue;
-    const score = numericAnswers.reduce((s, ans) => {
-      const baseId = ans.qid.split('|')[0];
-      const idx = orderMap.get(baseId);
-      if (!idx) return s;
-      return (idx >= start && idx <= end) ? s + ans.value : s;
-    }, 0);
-    rows.push({ id_subescala: row.id, puntaje: score });
-  }
-  return rows;
-}
-
-// POST /api/responses
-const createResponse = async (req, res) => {
-  try {
-    const { surveyId, userId, answers } = req.body || {};
-    const sid = parseInt(surveyId, 10);
-    const uid = parseInt(userId, 10);
-    if (Number.isNaN(sid) || Number.isNaN(uid) || !Array.isArray(answers)) {
-      return res.status(400).json({ message: 'Payload inv谩lido.' });
-    }
-
-    const pool = await getConnection();
-    const hasResultadoFK = await columnExists(pool, 'dbo', 'respuestas', 'id_resultado');
-    const hasTotalCol = await columnExists(pool, 'dbo', 'resultados', 'puntaje_total');
-    const hasResumenCol = await columnExists(pool, 'dbo', 'resultados', 'resumen_json');
-
-    const totals = await calculateScores(sid, answers);
-    const subRows = await calculateSubscaleRows(sid, answers);
-
-    const tx = new sql.Transaction(pool);
-    await tx.begin();
-    try {
-      const reqTx = new sql.Request(tx);
-      const ins = await reqTx
-        .input('fecha', sql.DateTime, new Date())
-        .input('id_usuario', sql.Int, uid)
-        .input('id_encuesta', sql.Int, sid)
-        .query(`INSERT INTO dbo.resultados (fecha, id_usuario, id_encuesta)
-                OUTPUT INSERTED.id VALUES (@fecha, @id_usuario, @id_encuesta)`);
-      const resultadoId = ins.recordset[0].id;
-
-      if (hasTotalCol) {
-        await reqTx
-          .input('rid', sql.Int, resultadoId)
-          .input('total', sql.Int, totals.total)
-          .query('UPDATE dbo.resultados SET puntaje_total=@total WHERE id=@rid');
-      }
-      if (hasResumenCol) {
-        await reqTx
-          .input('rid2', sql.Int, resultadoId)
-          .input('json', sql.NVarChar(sql.MAX), JSON.stringify(totals.subscales || {}))
-          .query('UPDATE dbo.resultados SET resumen_json=@json WHERE id=@rid2');
-      }
-
-      // Persistir subescalas si la tabla existe
-      const hasRS = (await reqTx.query(`SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('dbo.resultados_subescalas') AND type='U'`)).recordset.length > 0;
-      if (hasRS) {
-        for (const r of subRows) {
-          await new sql.Request(tx)
-            .input('id_resultado', sql.Int, resultadoId)
-            .input('id_subescala', sql.Int, r.id_subescala)
-            .input('puntaje', sql.Int, r.puntaje)
-            .query('INSERT INTO dbo.resultados_subescalas (id_resultado, id_subescala, puntaje) VALUES (@id_resultado, @id_subescala, @puntaje)');
-        }
-      }
-
-      // Respuestas
-      for (const a of answers) {
-        const qKey = String(a.questionId);
-        const [qidStr, subLabelRaw] = qKey.split('|');
-        const qid = parseInt(qidStr, 10);
-        if (Number.isNaN(qid)) continue;
-
-        const valueNum = Number(a.answer);
-        let optionId = null;
-        if (!Number.isNaN(valueNum)) {
-          let query = 'SELECT TOP 1 id FROM dbo.opciones_respuesta WHERE id_pregunta=@qid AND valor=@val';
-          const r = new sql.Request(tx).input('qid', sql.Int, qid).input('val', sql.NVarChar, String(valueNum));
-          if (subLabelRaw) {
-            query += ' AND LOWER(COALESCE(subescala, ' + "''" + ')) = @sub';
-            r.input('sub', sql.NVarChar, subLabelRaw.toLowerCase());
-          }
-          const or = await r.query(query);
-          optionId = or.recordset[0]?.id ?? null;
-        }
-
-        const baseReq = new sql.Request(tx)
-          .input('respuesta', sql.NVarChar(sql.MAX), String(a.answer))
-          .input('id_pregunta', sql.Int, qid)
-          .input('id_usuario', sql.Int, uid);
-
-        if (hasResultadoFK) baseReq.input('id_resultado', sql.Int, resultadoId);
-        if (!Number.isNaN(valueNum)) baseReq.input('valor_numerico', sql.Int, valueNum);
-        if (optionId !== null) baseReq.input('id_opcion_respuesta', sql.Int, optionId);
-
-        // Intentar insertar con columnas extendidas; si falla, degradar
-        try {
-          await baseReq.query(`INSERT INTO dbo.respuestas (respuesta, id_pregunta, id_usuario, ${hasResultadoFK ? 'id_resultado, ' : ''}valor_numerico, id_opcion_respuesta)
-                               VALUES (@respuesta, @id_pregunta, @id_usuario, ${hasResultadoFK ? '@id_resultado, ' : ''}@valor_numerico, @id_opcion_respuesta)`);
-        } catch {
-          const simple = new sql.Request(tx)
-            .input('respuesta', sql.NVarChar(sql.MAX), String(a.answer))
-            .input('id_pregunta', sql.Int, qid)
-            .input('id_usuario', sql.Int, uid);
-          if (hasResultadoFK) {
-            simple.input('id_resultado', sql.Int, resultadoId);
-            await simple.query('INSERT INTO dbo.respuestas (respuesta, id_pregunta, id_usuario, id_resultado) VALUES (@respuesta, @id_pregunta, @id_usuario, @id_resultado)');
-          } else {
-            await simple.query('INSERT INTO dbo.respuestas (respuesta, id_pregunta, id_usuario) VALUES (@respuesta, @id_pregunta, @id_usuario)');
-          }
-        }
-      }
-
-      await tx.commit();
-
-      // Clasificaci贸n (opcional) para algunas escalas sin promedios
-      try {
-        const info = await pool
-          .request()
-          .input('sid', sql.Int, sid)
-          .query('SELECT titulo FROM dbo.encuestas WHERE id=@sid');
-        const titulo = (info.recordset?.[0]?.titulo || '').toLowerCase();
-
-        if (titulo.includes('rosenberg')) {
-          const t = totals.total || 0;
-          let cls = 'Autoestima moderada';
-          if (t <= 25) cls = 'Baja autoestima';
-          else if (t >= 36) cls = 'Alta autoestima';
-          totals.classification = cls;
-        } else if (titulo.includes('liebow') || titulo.includes('lsas')) {
-          const t = totals.total || 0;
-          let cls = 'Leve ansiedad social';
-          if (t >= 82) cls = 'Grave Ansiedad Social';
-          else if (t >= 52) cls = 'Moderada Ansiedad social';
-          totals.classification = cls;
-        } else if (titulo.includes('horwitz') || String(sid) === '6') {
-          const t = totals.total || 0;
-          let lvl = 'Bajo';
-          if (t >= 90) lvl = 'Alto';
-          else if (t >= 70) lvl = 'Moderado';
-          totals.classification = 'Ansiedad ' + lvl;
-        }
-      } catch {}
-
-      const payload = {
-        id: String(resultadoId),
-        surveyId: String(surveyId),
-        userId: String(userId),
-        answers,
-        totals,
-        completedAt: new Date().toISOString(),
-      };
-      return res.status(201).json(payload);
-    } catch (err) {
-      await tx.rollback();
-      console.error('TX error al guardar respuesta:', err);
-      return res.status(500).json({ message: 'Error guardando respuesta.' });
-    }
-  } catch (err) {
-    console.error('Error al crear respuesta:', err);
-    res.status(500).json({ message: 'Error interno del servidor al guardar respuesta.' });
-  }
-};
-
-// GET /api/responses (admin)
-const getResponses = async (_req, res) => {
-  try {
-    const pool = await getConnection();
-    const hasResultadoFK = await columnExists(pool, 'dbo', 'respuestas', 'id_resultado');
-
-    const rs = await pool.request().query('SELECT id, fecha, id_usuario, id_encuesta FROM dbo.resultados ORDER BY fecha DESC');
-    const list = [];
-    for (const row of rs.recordset) {
-      let answers = [];
-      if (hasResultadoFK) {
-        const a = await pool
-          .request()
-          .input('rid', sql.Int, row.id)
-          .query(`SELECT r.respuesta, r.id_pregunta, r.valor_numerico, r.id_opcion_respuesta, o.subescala
-                  FROM dbo.respuestas r
-                  LEFT JOIN dbo.opciones_respuesta o ON o.id = r.id_opcion_respuesta
-                  WHERE r.id_resultado=@rid ORDER BY r.id`);
-        answers = a.recordset.map(r => {
-          const baseId = String(r.id_pregunta);
-          const sub = r.subescala ? '|' + String(r.subescala) : '';
-          const qid = baseId + sub;
-          const val = r.valor_numerico ?? (isNaN(Number(r.respuesta)) ? r.respuesta : Number(r.respuesta));
-          return { questionId: qid, answer: val };
-        });
-      } else {
-        const a = await pool
-          .request()
-          .input('uid', sql.Int, row.id_usuario)
-          .input('sid', sql.Int, row.id_encuesta)
-          .query(`SELECT r.respuesta, r.id_pregunta
-                  FROM dbo.respuestas r
-                  WHERE r.id_usuario=@uid AND r.id_pregunta IN (SELECT p.id FROM dbo.preguntas p WHERE p.id_encuesta=@sid)
-                  ORDER BY r.id`);
-        answers = a.recordset.map(r => ({ questionId: String(r.id_pregunta), answer: r.respuesta }));
-      }
-
-      const totals = await calculateScores(row.id_encuesta, answers);
-      // Clasificaci贸n b谩sica para LSAS y FLCAS
-      try {
-        if (answers.some(a => String(a.questionId).includes('|miedo') || String(a.questionId).includes('|evitacion'))) {
-          const t = totals.total || 0;
-          let cls = 'Leve ansiedad social';
-          if (t >= 82) cls = 'Grave Ansiedad Social';
-          else if (t >= 52) cls = 'Moderada Ansiedad social';
-          totals.classification = cls;
-        } else if (String(row.id_encuesta) === '6') {
-          const t = totals.total || 0;
-          let lvl = 'Bajo';
-          if (t >= 90) lvl = 'Alto';
-          else if (t >= 70) lvl = 'Moderado';
-          totals.classification = 'Ansiedad ' + lvl;
-        }
-      } catch {}
-
-      list.push({
-        id: String(row.id),
-        surveyId: String(row.id_encuesta),
-        userId: String(row.id_usuario),
-        answers,
-        totals,
-        completedAt: row.fecha,
-      });
-    }
-
-    res.status(200).json(list);
-  } catch (err) {
-    console.error('Error al obtener responses:', err);
-    res.status(500).json({ message: 'Error interno del servidor.' });
-  }
-};
-
-// GET /api/users/:id/results (usuario)
-const getResultsByUser = async (req, res) => {
-  try {
-    const userId = parseInt(req.params.id, 10);
-    if (Number.isNaN(userId)) return res.status(400).json({ message: 'ID de usuario inv谩lido' });
-
-    const pool = await getConnection();
-    const hasTotalCol = await columnExists(pool, 'dbo', 'resultados', 'puntaje_total');
-    const hasResumenCol = await columnExists(pool, 'dbo', 'resultados', 'resumen_json');
-
-    const rs = await pool
-      .request()
-      .input('uid', sql.Int, userId)
-      .query('SELECT id, fecha, id_encuesta, puntaje_total, resumen_json FROM dbo.resultados WHERE id_usuario=@uid ORDER BY fecha DESC');
-
-    const list = [];
-    for (const row of rs.recordset) {
-      let totals;
-      if (hasTotalCol || hasResumenCol) {
-        totals = {
-          total: row.puntaje_total ?? 0,
-          subscales: row.resumen_json ? JSON.parse(row.resumen_json) : {},
-        };
-      } else {
-        const a = await pool
-          .request()
-          .input('rid', sql.Int, row.id)
-          .query('SELECT id_pregunta, respuesta FROM dbo.respuestas WHERE id_resultado=@rid');
-        const answers = a.recordset.map(r => ({ questionId: String(r.id_pregunta), answer: r.respuesta }));
-        totals = await calculateScores(row.id_encuesta, answers);
-      }
-
-      // Clasificaci贸n b谩sica LSAS / FLCAS
-      try {
-        if (totals && totals.subscales && (typeof totals.subscales['Miedo/ansiedad'] !== 'undefined' || typeof totals.subscales['Evitaci贸n'] !== 'undefined')) {
-          const t = totals.total || 0;
-          let cls = 'Leve ansiedad social';
-          if (t >= 82) cls = 'Grave Ansiedad Social';
-          else if (t >= 52) cls = 'Moderada Ansiedad social';
-          totals.classification = cls;
-        } else if (String(row.id_encuesta) === '6') {
-          const t = totals.total || 0;
-          let lvl = 'Bajo';
-          if (t >= 90) lvl = 'Alto';
-          else if (t >= 70) lvl = 'Moderado';
-          totals.classification = 'Ansiedad ' + lvl;
-        }
-      } catch {}
-
-      list.push({
-        id: String(row.id),
-        surveyId: String(row.id_encuesta),
-        userId: String(userId),
-        answers: [],
-        totals,
-        completedAt: row.fecha,
-      });
-    }
-
-    res.status(200).json(list);
-  } catch (err) {
-    console.error('Error al obtener resultados del usuario:', err);
-    res.status(500).json({ message: 'Error interno del servidor.' });
-  }
-};
-
-export { createResponse, getResponses, getResultsByUser };
-
-
+   1: // backend/controllers/responseController.js
+   2: import { getConnection } from '../db.js';
+   3: import sql from 'mssql';
+   4: 
+   5: // Utilidad: verificar si existe una columna
+   6: async function columnExists(pool, schema, table, column) {
+   7:   const q = `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=@s AND TABLE_NAME=@t AND COLUMN_NAME=@c`;
+   8:   const rs = await pool
+   9:     .request()
+  10:     .input('s', sql.NVarChar, schema)
+  11:     .input('t', sql.NVarChar, table)
+  12:     .input('c', sql.NVarChar, column)
+  13:     .query(q);
+  14:   return rs.recordset.length > 0;
+  15: }
+  16: 
+  17: // Calcula suma total y subescalas (si existen reglas en dbo.subescalas). Tambi茅n reconoce LSAS por sufijos |miedo y |evitacion en questionId.
+  18: async function calculateScores(surveyId, answers) {
+  19:   const pool = await getConnection();
+  20: 
+  21:   // Orden de preguntas (para usar posibles rangos en subescalas)
+  22:   const qRes = await pool
+  23:     .request()
+  24:     .input('sid', sql.Int, surveyId)
+  25:     .query(`SELECT p.id FROM dbo.preguntas p WHERE p.id_encuesta=@sid ORDER BY p.id`);
+  26: 
+  27:   const orderMap = new Map(); // id -> 铆ndice (1..N)
+  28:   qRes.recordset.forEach((row, idx) => orderMap.set(String(row.id), idx + 1));
+  29: 
+  30:   // Respuestas num茅ricas
+  31:   const numericAnswers = (answers || [])
+  32:     .map(a => ({ qid: String(a.questionId), value: Number(a.answer) }))
+  33:     .filter(a => !Number.isNaN(a.value));
+  34: 
+  35:   const total = numericAnswers.reduce((s, a) => s + a.value, 0);
+  36: 
+  37:   const subscales = {};
+  38: 
+  39:   // Reconocer LSAS por sufijos en questionId
+  40:   const fear = numericAnswers
+  41:     .filter(a => a.qid.toLowerCase().includes('|miedo'))
+  42:     .reduce((s, a) => s + a.value, 0);
+  43:   const avoid = numericAnswers
+  44:     .filter(a => a.qid.toLowerCase().includes('|evitacion'))
+  45:     .reduce((s, a) => s + a.value, 0);
+  46:   if (fear > 0 || avoid > 0) {
+  47:     subscales['Miedo/ansiedad'] = fear;
+  48:     subscales['Evitaci贸n'] = avoid;
+  49:   }
+  50: 
+  51:   // Subescalas por rango desde la BD
+  52:   const ssRes = await pool
+  53:     .request()
+  54:     .input('sid', sql.Int, surveyId)
+  55:     .query(`SELECT id, nombre, rango_items FROM dbo.subescalas WHERE id_encuesta=@sid ORDER BY id`);
+  56: 
+  57:   for (const row of ssRes.recordset || []) {
+  58:     const [a, b] = String(row.rango_items).split('-');
+  59:     const start = parseInt(a, 10);
+  60:     const end = parseInt(b, 10);
+  61:     if (Number.isNaN(start) || Number.isNaN(end)) continue;
+  62: 
+  63:     const score = numericAnswers.reduce((s, ans) => {
+  64:       const baseId = ans.qid.split('|')[0];
+  65:       const idx = orderMap.get(baseId);
+  66:       if (!idx) return s;
+  67:       return (idx >= start && idx <= end) ? s + ans.value : s;
+  68:     }, 0);
+  69: 
+  70:     if (typeof subscales[row.nombre] === 'undefined') subscales[row.nombre] = score;
+  71:     else subscales[row.nombre] += score;
+  72:   }
+  73: 
+  74:   return { total, subscales };
+  75: }
+  76: 
+  77: // Para persistir detalle de subescalas (si existe tabla resultados_subescalas)
+  78: async function calculateSubscaleRows(surveyId, answers) {
+  79:   const pool = await getConnection();
+  80: 
+  81:   const qRes = await pool
+  82:     .request()
+  83:     .input('sid', sql.Int, surveyId)
+  84:     .query(`SELECT p.id FROM dbo.preguntas p WHERE p.id_encuesta=@sid ORDER BY p.id`);
+  85:   const orderMap = new Map();
+  86:   qRes.recordset.forEach((row, idx) => orderMap.set(String(row.id), idx + 1));
+  87: 
+  88:   const numericAnswers = (answers || [])
+  89:     .map(a => ({ qid: String(a.questionId), value: Number(a.answer) }))
+  90:     .filter(a => !Number.isNaN(a.value));
+  91: 
+  92:   const ssRes = await pool
+  93:     .request()
+  94:     .input('sid', sql.Int, surveyId)
+  95:     .query(`SELECT id, nombre, rango_items FROM dbo.subescalas WHERE id_encuesta=@sid ORDER BY id`);
+  96: 
+  97:   const rows = [];
+  98:   for (const row of ssRes.recordset || []) {
+  99:     const [a, b] = String(row.rango_items).split('-');
+ 100:     const start = parseInt(a, 10);
+ 101:     const end = parseInt(b, 10);
+ 102:     if (Number.isNaN(start) || Number.isNaN(end)) continue;
+ 103:     const score = numericAnswers.reduce((s, ans) => {
+ 104:       const baseId = ans.qid.split('|')[0];
+ 105:       const idx = orderMap.get(baseId);
+ 106:       if (!idx) return s;
+ 107:       return (idx >= start && idx <= end) ? s + ans.value : s;
+ 108:     }, 0);
+ 109:     rows.push({ id_subescala: row.id, puntaje: score });
+ 110:   }
+ 111:   return rows;
+ 112: }
+ 113: 
+ 114: // POST /api/responses
+ 115: const createResponse = async (req, res) => {
+ 116:   try {
+ 117:     const { surveyId, userId, answers } = req.body || {};
+ 118:     const sid = parseInt(surveyId, 10);
+ 119:     const uid = parseInt(userId, 10);
+ 120:     if (Number.isNaN(sid) || Number.isNaN(uid) || !Array.isArray(answers)) {
+ 121:       return res.status(400).json({ message: 'Payload inv谩lido.' });
+ 122:     }
+ 123: 
+ 124:     const pool = await getConnection();
+ 125:     const hasResultadoFK = await columnExists(pool, 'dbo', 'respuestas', 'id_resultado');
+ 126:     // Por ahora en dbo.resultados solo guardaremos la fecha (y llaves).
+ 127:     // No usamos puntaje_total ni resumen_json en esta inserci贸n.
+ 128: 
+ 129:     // Podemos seguir calculando totales para devolver al frontend, pero NO los guardamos en dbo.resultados ahora.
+ 130:     const totals = await calculateScores(sid, answers);
+ 131: 
+ 132:     const tx = new sql.Transaction(pool);
+ 133:     await tx.begin();
+ 134:     try {
+ 135:       const reqTx = new sql.Request(tx);
+ 136:       const ins = await reqTx
+ 137:         .input('fecha', sql.DateTime, new Date())
+ 138:         .input('id_usuario', sql.Int, uid)
+ 139:         .input('id_encuesta', sql.Int, sid)
+ 140:         .query(`INSERT INTO dbo.resultados (fecha, id_usuario, id_encuesta)
+ 141:                 OUTPUT INSERTED.id VALUES (@fecha, @id_usuario, @id_encuesta)`);
+ 142:       const resultadoId = ins.recordset[0].id;
+ 143: 
+ 144:       // No actualizar columnas puntaje_total ni resumen_json; tampoco insertar resultados_subescalas por ahora.
+ 145: 
+ 146:       // Respuestas
+ 147:       for (const a of answers) {
+ 148:         const qKey = String(a.questionId);
+ 149:         const [qidStr, subLabelRaw] = qKey.split('|');
+ 150:         const qid = parseInt(qidStr, 10);
+ 151:         if (Number.isNaN(qid)) continue;
+ 152: 
+ 153:         const valueNum = Number(a.answer);
+ 154:         let optionId = null;
+ 155:         if (!Number.isNaN(valueNum)) {
+ 156:           let query = 'SELECT TOP 1 id FROM dbo.opciones_respuesta WHERE id_pregunta=@qid AND valor=@val';
+ 157:           const r = new sql.Request(tx).input('qid', sql.Int, qid).input('val', sql.NVarChar, String(valueNum));
+ 158:           if (subLabelRaw) {
+ 159:             query += ' AND LOWER(COALESCE(subescala, ' + "''" + ')) = @sub';
+ 160:             r.input('sub', sql.NVarChar, subLabelRaw.toLowerCase());
+ 161:           }
+ 162:           const or = await r.query(query);
+ 163:           optionId = or.recordset[0]?.id ?? null;
+ 164:         }
+ 165: 
+ 166:         const baseReq = new sql.Request(tx)
+ 167:           .input('respuesta', sql.NVarChar(sql.MAX), String(a.answer))
+ 168:           .input('id_pregunta', sql.Int, qid)
+ 169:           .input('id_usuario', sql.Int, uid);
+ 170: 
+ 171:         if (hasResultadoFK) baseReq.input('id_resultado', sql.Int, resultadoId);
+ 172:         if (!Number.isNaN(valueNum)) baseReq.input('valor_numerico', sql.Int, valueNum);
+ 173:         if (optionId !== null) baseReq.input('id_opcion_respuesta', sql.Int, optionId);
+ 174: 
+ 175:         // Intentar insertar con columnas extendidas; si falla, degradar
+ 176:         try {
+ 177:           await baseReq.query(`INSERT INTO dbo.respuestas (respuesta, id_pregunta, id_usuario, ${hasResultadoFK ? 'id_resultado, ' : ''}valor_numerico, id_opcion_respuesta)
+ 178:                                VALUES (@respuesta, @id_pregunta, @id_usuario, ${hasResultadoFK ? '@id_resultado, ' : ''}@valor_numerico, @id_opcion_respuesta)`);
+ 179:         } catch {
+ 180:           const simple = new sql.Request(tx)
+ 181:             .input('respuesta', sql.NVarChar(sql.MAX), String(a.answer))
+ 182:             .input('id_pregunta', sql.Int, qid)
+ 183:             .input('id_usuario', sql.Int, uid);
+ 184:           if (hasResultadoFK) {
+ 185:             simple.input('id_resultado', sql.Int, resultadoId);
+ 186:             await simple.query('INSERT INTO dbo.respuestas (respuesta, id_pregunta, id_usuario, id_resultado) VALUES (@respuesta, @id_pregunta, @id_usuario, @id_resultado)');
+ 187:           } else {
+ 188:             await simple.query('INSERT INTO dbo.respuestas (respuesta, id_pregunta, id_usuario) VALUES (@respuesta, @id_pregunta, @id_usuario)');
+ 189:           }
+ 190:         }
+ 191:       }
+ 192: 
+ 193:       await tx.commit();
+ 194: 
+ 195:       // Clasificaci贸n (opcional) para algunas escalas sin promedios
+ 196:       try {
+ 197:         const info = await pool
+ 198:           .request()
+ 199:           .input('sid', sql.Int, sid)
+ 200:           .query('SELECT titulo FROM dbo.encuestas WHERE id=@sid');
+ 201:         const titulo = (info.recordset?.[0]?.titulo || '').toLowerCase();
+ 202: 
+ 203:         if (titulo.includes('rosenberg')) {
+ 204:           const t = totals.total || 0;
+ 205:           let cls = 'Autoestima moderada';
+ 206:           if (t <= 25) cls = 'Baja autoestima';
+ 207:           else if (t >= 36) cls = 'Alta autoestima';
+ 208:           totals.classification = cls;
+ 209:         } else if (titulo.includes('liebow') || titulo.includes('lsas')) {
+ 210:           const t = totals.total || 0;
+ 211:           let cls = 'Leve ansiedad social';
+ 212:           if (t >= 82) cls = 'Grave Ansiedad Social';
+ 213:           else if (t >= 52) cls = 'Moderada Ansiedad social';
+ 214:           totals.classification = cls;
+ 215:         } else if (titulo.includes('horwitz') || String(sid) === '6') {
+ 216:           const t = totals.total || 0;
+ 217:           let lvl = 'Bajo';
+ 218:           if (t >= 90) lvl = 'Alto';
+ 219:           else if (t >= 70) lvl = 'Moderado';
+ 220:           totals.classification = 'Ansiedad ' + lvl;
+ 221:         }
+ 222:       } catch {}
+ 223: 
+ 224:       const payload = {
+ 225:         id: String(resultadoId),
+ 226:         surveyId: String(surveyId),
+ 227:         userId: String(userId),
+ 228:         answers,
+ 229:         totals,
+ 230:         completedAt: new Date().toISOString(),
+ 231:       };
+ 232:       return res.status(201).json(payload);
+ 233:     } catch (err) {
+ 234:       await tx.rollback();
+ 235:       console.error('TX error al guardar respuesta:', err);
+ 236:       return res.status(500).json({ message: 'Error guardando respuesta.' });
+ 237:     }
+ 238:   } catch (err) {
+ 239:     console.error('Error al crear respuesta:', err);
+ 240:     res.status(500).json({ message: 'Error interno del servidor al guardar respuesta.' });
+ 241:   }
+ 242: };
+ 243: 
+ 244: // GET /api/responses (admin)
+ 245: const getResponses = async (_req, res) => {
+ 246:   try {
+ 247:     const pool = await getConnection();
+ 248:     const hasResultadoFK = await columnExists(pool, 'dbo', 'respuestas', 'id_resultado');
+ 249: 
+ 250:     const rs = await pool.request().query('SELECT id, fecha, id_usuario, id_encuesta FROM dbo.resultados ORDER BY fecha DESC');
+ 251:     const list = [];
+ 252:     for (const row of rs.recordset) {
+ 253:       let answers = [];
+ 254:       if (hasResultadoFK) {
+ 255:         const a = await pool
+ 256:           .request()
+ 257:           .input('rid', sql.Int, row.id)
+ 258:           .query(`SELECT r.respuesta, r.id_pregunta, r.valor_numerico, r.id_opcion_respuesta, o.subescala
+ 259:                   FROM dbo.respuestas r
+ 260:                   LEFT JOIN dbo.opciones_respuesta o ON o.id = r.id_opcion_respuesta
+ 261:                   WHERE r.id_resultado=@rid ORDER BY r.id`);
+ 262:         answers = a.recordset.map(r => {
+ 263:           const baseId = String(r.id_pregunta);
+ 264:           const sub = r.subescala ? '|' + String(r.subescala) : '';
+ 265:           const qid = baseId + sub;
+ 266:           const val = r.valor_numerico ?? (isNaN(Number(r.respuesta)) ? r.respuesta : Number(r.respuesta));
+ 267:           return { questionId: qid, answer: val };
+ 268:         });
+ 269:       } else {
+ 270:         const a = await pool
+ 271:           .request()
+ 272:           .input('uid', sql.Int, row.id_usuario)
+ 273:           .input('sid', sql.Int, row.id_encuesta)
+ 274:           .query(`SELECT r.respuesta, r.id_pregunta
+ 275:                   FROM dbo.respuestas r
+ 276:                   WHERE r.id_usuario=@uid AND r.id_pregunta IN (SELECT p.id FROM dbo.preguntas p WHERE p.id_encuesta=@sid)
+ 277:                   ORDER BY r.id`);
+ 278:         answers = a.recordset.map(r => ({ questionId: String(r.id_pregunta), answer: r.respuesta }));
+ 279:       }
+ 280: 
+ 281:       const totals = await calculateScores(row.id_encuesta, answers);
+ 282:       // Clasificaci贸n b谩sica para LSAS y FLCAS
+ 283:       try {
+ 284:         if (answers.some(a => String(a.questionId).includes('|miedo') || String(a.questionId).includes('|evitacion'))) {
+ 285:           const t = totals.total || 0;
+ 286:           let cls = 'Leve ansiedad social';
+ 287:           if (t >= 82) cls = 'Grave Ansiedad Social';
+ 288:           else if (t >= 52) cls = 'Moderada Ansiedad social';
+ 289:           totals.classification = cls;
+ 290:         } else if (String(row.id_encuesta) === '6') {
+ 291:           const t = totals.total || 0;
+ 292:           let lvl = 'Bajo';
+ 293:           if (t >= 90) lvl = 'Alto';
+ 294:           else if (t >= 70) lvl = 'Moderado';
+ 295:           totals.classification = 'Ansiedad ' + lvl;
+ 296:         }
+ 297:       } catch {}
+ 298: 
+ 299:       list.push({
+ 300:         id: String(row.id),
+ 301:         surveyId: String(row.id_encuesta),
+ 302:         userId: String(row.id_usuario),
+ 303:         answers,
+ 304:         totals,
+ 305:         completedAt: row.fecha,
+ 306:       });
+ 307:     }
+ 308: 
+ 309:     res.status(200).json(list);
+ 310:   } catch (err) {
+ 311:     console.error('Error al obtener responses:', err);
+ 312:     res.status(500).json({ message: 'Error interno del servidor.' });
+ 313:   }
+ 314: };
+ 315: 
+ 316: // GET /api/users/:id/results (usuario)
+ 317: const getResultsByUser = async (req, res) => {
+ 318:   try {
+ 319:     const userId = parseInt(req.params.id, 10);
+ 320:     if (Number.isNaN(userId)) return res.status(400).json({ message: 'ID de usuario inv醠ido' });
+ 321: 
+ 322:     const pool = await getConnection();
+ 323: 
+ 324:     const rs = await pool
+ 325:       .request()
+ 326:       .input('uid', sql.Int, userId)
+ 327:       .query('SELECT id, fecha, id_encuesta FROM dbo.resultados WHERE id_usuario=@uid ORDER BY fecha DESC');
+ 328: 
+ 329:     const list = [];
+ 330:     for (const row of rs.recordset) {
+ 331:       // Recalcular totales desde respuestas SIEMPRE por ahora (solo guardamos fecha en resultados)
+ 332:       const a = await pool
+ 333:         .request()
+ 334:         .input('rid', sql.Int, row.id)
+ 335:         .query('SELECT id_pregunta, respuesta FROM dbo.respuestas WHERE id_resultado=@rid');
+ 336:       const answers = a.recordset.map(r => ({ questionId: String(r.id_pregunta), answer: r.respuesta }));
+ 337:       const totals = await calculateScores(row.id_encuesta, answers);
+ 338: 
+ 339:       // Clasificaci髇 b醩ica LSAS / FLCAS (solo para mostrar)
+ 340:       try {
+ 341:         if (totals && totals.subscales && (typeof totals.subscales['Miedo/ansiedad'] !== 'undefined' || typeof totals.subscales['Evitaci髇'] !== 'undefined')) {
+ 342:           const t = totals.total || 0;
+ 343:           let cls = 'Leve ansiedad social';
+ 344:           if (t >= 82) cls = 'Grave Ansiedad Social';
+ 345:           else if (t >= 52) cls = 'Moderada Ansiedad social';
+ 346:           totals.classification = cls;
+ 347:         } else if (String(row.id_encuesta) === '6') {
+ 348:           const t = totals.total || 0;
+ 349:           let lvl = 'Bajo';
+ 350:           if (t >= 90) lvl = 'Alto';
+ 351:           else if (t >= 70) lvl = 'Moderado';
+ 352:           totals.classification = 'Ansiedad ' + lvl;
+ 353:         }
+ 354:       } catch {}
+ 355: 
+ 356:       list.push({
+ 357:         id: String(row.id),
+ 358:         surveyId: String(row.id_encuesta),
+ 359:         userId: String(userId),
+ 360:         answers: [],
+ 361:         totals,
+ 362:         completedAt: row.fecha,
+ 363:       });
+ 364:     }
+ 365: 
+ 366:     res.status(200).json(list);
+ 367:   } catch (err) {
+ 368:     console.error('Error al obtener resultados del usuario:', err);
+ 369:     res.status(500).json({ message: 'Error interno del servidor.' });
+ 370:   }
+ 371: };
+ 372:       } else {
+ 373:         const a = await pool
+ 374:           .request()
+ 375:           .input('rid', sql.Int, row.id)
+ 376:           .query('SELECT id_pregunta, respuesta FROM dbo.respuestas WHERE id_resultado=@rid');
+ 377:         const answers = a.recordset.map(r => ({ questionId: String(r.id_pregunta), answer: r.respuesta }));
+ 378:         totals = await calculateScores(row.id_encuesta, answers);
+ 379:       }
+ 380: 
+ 381:       // Clasificaci贸n b谩sica LSAS / FLCAS
+ 382:       try {
+ 383:         if (totals && totals.subscales && (typeof totals.subscales['Miedo/ansiedad'] !== 'undefined' || typeof totals.subscales['Evitaci贸n'] !== 'undefined')) {
+ 384:           const t = totals.total || 0;
+ 385:           let cls = 'Leve ansiedad social';
+ 386:           if (t >= 82) cls = 'Grave Ansiedad Social';
+ 387:           else if (t >= 52) cls = 'Moderada Ansiedad social';
+ 388:           totals.classification = cls;
+ 389:         } else if (String(row.id_encuesta) === '6') {
+ 390:           const t = totals.total || 0;
+ 391:           let lvl = 'Bajo';
+ 392:           if (t >= 90) lvl = 'Alto';
+ 393:           else if (t >= 70) lvl = 'Moderado';
+ 394:           totals.classification = 'Ansiedad ' + lvl;
+ 395:         }
+ 396:       } catch {}
+ 397: 
+ 398:       list.push({
+ 399:         id: String(row.id),
+ 400:         surveyId: String(row.id_encuesta),
+ 401:         userId: String(userId),
+ 402:         answers: [],
+ 403:         totals,
+ 404:         completedAt: row.fecha,
+ 405:       });
+ 406:     }
+ 407: 
+ 408:     res.status(200).json(list);
+ 409:   } catch (err) {
+ 410:     console.error('Error al obtener resultados del usuario:', err);
+ 411:     res.status(500).json({ message: 'Error interno del servidor.' });
+ 412:   }
+ 413: };
+ 414: 
+ 415: export { createResponse, getResponses, getResultsByUser };
+ 416: 
