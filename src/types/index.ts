@@ -13,7 +13,7 @@ export interface QuestionOption {
   label: string;
   value: number | string;
   orden?: number;
-  group?: string; // para escalas con subcomponentes (e.g., lsas: miedo/evitacion)
+  group?: string; // para subescalas (e.g. LSAS: miedo/evitación)
 }
 
 export interface Question {
