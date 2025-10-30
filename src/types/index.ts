@@ -9,13 +9,6 @@ export interface User {
   avatar?: string;
 }
 
-export interface QuestionOption {
-  label: string;
-  value: number | string;
-  orden?: number;
-  group?: string; // para subescalas (e.g. LSAS: miedo/evitación)
-}
-
 export interface Question {
   id: string;
   text: string;
@@ -25,6 +18,13 @@ export interface Question {
   scaleMin?: number;
   scaleMax?: number;
   scaleLabels?: { min: string; max: string };
+}
+
+export interface QuestionOption {
+  label: string;
+  value: number | string;
+  orden?: number;
+  group?: string; // para subescalas (e.g. LSAS: miedo/evitación)
 }
 
 
