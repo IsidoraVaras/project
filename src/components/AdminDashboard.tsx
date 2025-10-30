@@ -9,11 +9,12 @@ interface AdminDashboardProps {
 
 type View = 'overview' | 'responses' | 'user-detail' | 'create-admin' | 'manage-admins';
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const [currentView, setCurrentView] = useState<View>('overview');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [clients, setClients] = useState<User[]>([]);
   const [admins, setAdmins] = useState<User[]>([]);
+  const [adminQuery, setAdminQuery] = useState('');
   // Modal de confirmación de eliminación
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; user: User | null; loading: boolean; error?: string }>({ open: false, user: null, loading: false });
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
@@ -237,38 +238,64 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
     </div>
   );
 
-  const renderManageAdmins = () => (
-    <div>
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">Administradores</h2>
-      </div>
+  const renderManageAdmins = () => {
+    const q = adminQuery.trim().toLowerCase();
+    const filtered = q
+      ? admins.filter((u) => [u.nombre, u.apellido, u.email].some((s) => String(s).toLowerCase().includes(q)))
+      : admins;
+    return (
+      <div>
+        <div className="mb-8">
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">Administradores</h2>
+        </div>
 
-      <div className="space-y-4">
-        {admins.length === 0 ? (
-          <div className="text-center py-12 bg-white border-2 border-gray-300 rounded-xl">
-            <Shield className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">No hay administradores creados.</p>
-          </div>
-        ) : (
-          admins.map((u) => (
-            <div key={u.id} className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">{u.nombre} {u.apellido}</h3>
-                <p className="text-gray-600">{u.email}</p>
-              </div>
-              <button
-                onClick={() => setDeleteModal({ open: true, user: u, loading: false })}
-                className="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                title="Eliminar administrador"
-              >
-                <Trash2 className="h-4 w-4 mr-2" /> Eliminar
-              </button>
+        <div className="mb-4">
+          <input
+            type="text"
+            value={adminQuery}
+            onChange={(e) => setAdminQuery(e.target.value)}
+            placeholder="Buscar por nombre, apellido o correo"
+            className="w-full max-w-xl rounded-lg border-2 border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
+          />
+          {q && (
+            <p className="text-sm text-gray-600 mt-2">Coincidencias: {filtered.length}</p>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          {filtered.length === 0 ? (
+            <div className="text-center py-12 bg-white border-2 border-gray-300 rounded-xl">
+              <Shield className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600">{admins.length === 0 ? 'No hay administradores creados.' : 'Sin resultados para la búsqueda.'}</p>
             </div>
-          ))
-        )}
+          ) : (
+            filtered.map((u) => (
+              <div key={u.id} className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{u.nombre} {u.apellido}</h3>
+                  <p className="text-gray-600">
+                    {u.email}
+                    {user && String(user.id) === String(u.id) && (
+                      <span className="ml-2 text-xs px-2 py-0.5 rounded bg-gray-100 border border-gray-300 text-gray-700 align-middle">Tú</span>
+                    )}
+                  </p>
+                </div>
+                {!(user && String(user.id) === String(u.id)) && (
+                  <button
+                    onClick={() => setDeleteModal({ open: true, user: u, loading: false })}
+                    className="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                    title="Eliminar administrador"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" /> Eliminar
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderDeleteModal = () => {
     if (!deleteModal.open || !deleteModal.user) return null;
@@ -277,6 +304,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
     const confirmDelete = async () => {
       try {
         setDeleteModal((m) => ({ ...m, loading: true, error: undefined }));
+        if (user && String(user.id) === String(u.id)) {
+          throw new Error('No puedes eliminar tu propio usuario.');
+        }
         const res = await fetch(`http://localhost:3001/api/admin/users/${u.id}`, { method: 'DELETE' });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
