@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Survey, Question, Answer, QuestionOption } from '../types';
 import { Loader2, AlertTriangle, ArrowLeft } from 'lucide-react';
 
+// ==== Tipos que devuelve el backend ====
 interface DBQuestionOption {
   id: number;
   orden: number | null;
@@ -31,6 +32,7 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string | number>>({});
+  const [currentIndex, setCurrentIndex] = useState<number>(0);
 
   const sanitize = (s: string) =>
     (s ?? '')
@@ -48,46 +50,36 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
           typeof o.valor === 'number'
             ? o.valor
             : (isNaN(Number(o.valor)) ? String(o.valor) : Number(o.valor)),
-        orden: o.orden ?? undefined,
-        group: o.subescala ?? undefined,
       }));
   };
 
-  const isLSAS = (dbq: DBQuestion): boolean => {
-    const hasLsasType = dbq.opciones?.some(
-      (o) => (o.tipo_escala ?? '').toLowerCase() === 'lsas'
-    );
-    const hasLsasSub = dbq.opciones?.some((o) => {
-      const s = (o.subescala ?? '').toLowerCase();
-      return s === 'miedo' || s === 'evitacion' || s === 'evitación';
-    });
-    return Boolean(hasLsasType || hasLsasSub);
-  };
-
+  // Carga de preguntas
   useEffect(() => {
     const fetchQuestions = async () => {
       setLoading(true);
       try {
         const response = await fetch(`http://localhost:3001/api/surveys/${survey.id}/questions`);
         if (!response.ok) throw new Error(`Error ${response.status}`);
-
         const data: DBQuestion[] = await response.json();
 
         const mapped: Question[] = data.map((dbq) => {
-          const opts = toQuestionOptions(dbq.opciones);
+          const rawOpts = dbq.opciones || [];
+          const hasLSAS = rawOpts.some((o) => {
+            const s = (o.subescala || '').toLowerCase();
+            return s === 'miedo' || s === 'evitacion';
+          });
 
-          if (isLSAS(dbq)) {
+          if (hasLSAS) {
             return {
               id: String(dbq.id),
               text: sanitize(dbq.texto),
-              type: 'lsas',
+              type: 'lsas' as Question['type'],
               required: true,
               options: [],
-              scaleMin: 0,
-              scaleMax: 3,
             };
           }
 
+          const opts = toQuestionOptions(rawOpts);
           if (opts.length > 0) {
             return {
               id: String(dbq.id),
@@ -108,8 +100,9 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
         });
 
         setQuestions(mapped);
+        setCurrentIndex(0);
         setError(null);
-      } catch (e: any) {
+      } catch (e) {
         console.error(e);
         setError('Hubo un problema al cargar las preguntas.');
       } finally {
@@ -124,15 +117,45 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
   };
 
+  const validateCurrent = (): boolean => {
+    if (!questions.length) return false;
+    const q = questions[currentIndex];
+    if (!q.required) return true;
+    if (q.type === 'lsas') {
+      const m = answers[`${q.id}|miedo`];
+      const e = answers[`${q.id}|evitacion`];
+      const okM = !Number.isNaN(Number(m)) && Number(m) >= 0 && Number(m) <= 3;
+      const okE = !Number.isNaN(Number(e)) && Number(e) >= 0 && Number(e) <= 3;
+      return okM && okE;
+    }
+    if (q.type === 'multiple-choice') {
+      return Object.prototype.hasOwnProperty.call(answers, q.id) && answers[q.id] !== '';
+    }
+    if (q.type === 'text') {
+      const v = answers[q.id];
+      return typeof v === 'string' ? v.trim().length > 0 : !!v;
+    }
+    return true;
+  };
+
+  const goNext = () => {
+    if (!validateCurrent()) return;
+    setCurrentIndex((i) => Math.min(i + 1, questions.length - 1));
+  };
+
+  const goPrev = () => setCurrentIndex((i) => Math.max(i - 1, 0));
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const finalAnswers: Answer[] = Object.keys(answers).map((questionKey) => ({
-      questionId: questionKey,
-      answer: answers[questionKey],
+    if (!validateCurrent()) return;
+    const finalAnswers: Answer[] = Object.keys(answers).map((questionId) => ({
+      questionId,
+      answer: answers[questionId],
     }));
     onComplete(survey.id, finalAnswers);
   };
 
+  // ==== Estados ====
   if (loading) {
     return (
       <div className="text-center py-12">
@@ -148,159 +171,178 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
         <AlertTriangle className="h-6 w-6 mx-auto mb-3" />
         <p className="font-bold">Error:</p>
         <p>{error}</p>
-        <button
-          onClick={onCancel}
-          className="mt-4 text-gray-600 hover:text-gray-900 transition-colors underline"
-        >
+        <button onClick={onCancel} className="mt-4 text-gray-600 hover:text-gray-900 transition-colors underline">
           <ArrowLeft className="h-4 w-4 inline mr-1" /> Volver
         </button>
       </div>
     );
   }
 
-  const isLsasSurvey = questions.some((q) => q.type === 'lsas');
+  if (questions.length === 0) {
+    return (
+      <div className="text-center p-8 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">
+        <p className="font-bold">Información:</p>
+        <p>Esta encuesta no tiene preguntas asociadas aún.</p>
+        <button onClick={onCancel} className="mt-4 text-gray-600 hover:text-gray-900 transition-colors underline">
+          <ArrowLeft className="h-4 w-4 inline mr-1" /> Volver
+        </button>
+      </div>
+    );
+  }
+
+  const q = questions[currentIndex];
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-lg border-2 border-gray-200 min-w-0">
       <h2 className="text-3xl font-extrabold text-gray-900 mb-2">{survey.title}</h2>
-      <p className="text-gray-600 mb-8">{survey.description || 'Cargando preguntas de la encuesta...'}</p>
-
-      {/* 🔶 Recuadro informativo solo para LSAS */}
-      {isLsasSurvey && (
-        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6 text-gray-800">
-          <h3 className="font-bold text-lg mb-2">
-            Escala de Ansiedad Social de Liebowitz (LSAS)
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm leading-relaxed">
-            <div>
-              <p className="font-semibold">Miedo o ansiedad</p>
-              <p>0 = Nada de miedo o ansiedad</p>
-              <p>1 = Un poco de miedo o ansiedad</p>
-              <p>2 = Bastante miedo o ansiedad</p>
-              <p>3 = Mucho miedo o ansiedad</p>
-            </div>
-            <div>
-              <p className="font-semibold">Evitación</p>
-              <p>0 = Nunca lo evito (0%)</p>
-              <p>1 = En ocasiones lo evito (1–33%)</p>
-              <p>2 = Frecuentemente lo evito (33–67%)</p>
-              <p>3 = Habitualmente lo evito (67–100%)</p>
-            </div>
-          </div>
-        </div>
-      )}
+      <p className="text-gray-600 mb-8">{survey.description}</p>
 
       <form onSubmit={handleSubmit} className="space-y-8 min-w-0">
-        {questions.map((q, index) => {
-          const miedoKey = `${q.id}__miedo`;
-          const evitKey = `${q.id}__evitacion`;
+        {/* Progreso */}
+        <div className="flex items-center justify-between text-sm text-gray-600">
+          <span>Pregunta {currentIndex + 1} de {questions.length}</span>
+          <div className="flex-1 ml-4 h-2 bg-gray-200 rounded">
+            <div className="h-2 bg-orange-500 rounded" style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }} />
+          </div>
+        </div>
 
-          return (
-            <div
-              key={q.id}
-              className="p-4 border-l-4 border-orange-500 bg-gray-50 rounded-r-lg shadow-sm min-w-0"
-            >
-              <label className="block text-lg font-semibold text-gray-800 mb-3">
-                {index + 1}. {q.text} {q.required && <span className="text-red-500">*</span>}
-              </label>
-
-              {q.type === 'multiple-choice' && q.options && q.options.length > 0 && (
-                <div className="space-y-2 min-w-0">
-                  {q.options.map((opt, i) => (
-                    <label
-                      key={`${q.id}-${i}`}
-                      className="relative flex items-start gap-3 w-full min-w-0"
-                    >
-                      <input
-                        type="radio"
-                        name={`q-${q.id}`}
-                        value={opt.value}
-                        checked={answers[q.id] === opt.value}
-                        onChange={(e) => handleChange(q.id, e.target.value)}
-                        className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 shrink-0 relative z-10"
-                        required={q.required}
-                      />
-                      <span
-                        className="text-gray-800 flex-1 min-w-0 whitespace-pre-wrap break-words leading-normal relative z-10"
-                      >
-                        {opt.label}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              )}
-
-              {q.type === 'lsas' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
-                  <div className="min-w-0">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Miedo/ansiedad (0–3)
-                    </label>
-                    <input
-                      type="number"
-                      min={q.scaleMin ?? 0}
-                      max={q.scaleMax ?? 3}
-                      step={1}
-                      value={answers[miedoKey] ?? ''}
-                      onChange={(e) => {
-                        const val = e.target.value === '' ? '' : Number(e.target.value);
-                        handleChange(miedoKey, val);
-                      }}
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500"
-                      required={q.required}
-                    />
-                  </div>
-
-                  <div className="min-w-0">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Evitación (0–3)
-                    </label>
-                    <input
-                      type="number"
-                      min={q.scaleMin ?? 0}
-                      max={q.scaleMax ?? 3}
-                      step={1}
-                      value={answers[evitKey] ?? ''}
-                      onChange={(e) => {
-                        const val = e.target.value === '' ? '' : Number(e.target.value);
-                        handleChange(evitKey, val);
-                      }}
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500"
-                      required={q.required}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {q.type === 'text' && (
-                <input
-                  type="text"
-                  value={answers[q.id] || ''}
-                  onChange={(e) => handleChange(q.id, e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500"
-                  required={q.required}
-                />
-              )}
+        {/* Leyenda LSAS si aplica */}
+        {questions.some(x => x.type === 'lsas') && (
+          <div className="p-4 border rounded bg-orange-50 text-sm text-gray-800">
+            <p className="font-semibold mb-1">Escala de Ansiedad Social de Liebowitz (LSAS)</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="font-medium">Miedo o ansiedad</p>
+                <p>0 = Nada de miedo o ansiedad</p>
+                <p>1 = Un poco de miedo o ansiedad</p>
+                <p>2 = Bastante miedo o ansiedad</p>
+                <p>3 = Mucho miedo o ansiedad</p>
+              </div>
+              <div>
+                <p className="font-medium">Evitación</p>
+                <p>0 = Nunca lo evito</p>
+                <p>1 = En ocasiones lo evito</p>
+                <p>2 = Frecuentemente lo evito</p>
+                <p>3 = Habitualmente lo evito</p>
+              </div>
             </div>
-          );
-        })}
+          </div>
+        )}
 
-        <div className="flex justify-between pt-4 border-t border-gray-200">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            className="px-6 py-3 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 transition-colors"
-          >
-            Completar Encuesta
-          </button>
+        {/* Una sola pregunta (forzar remount por pregunta) */}
+        {([q] as Question[]).map((qq) => (
+          <div key={`q-${qq.id}`} className="p-4 border-l-4 border-orange-500 bg-gray-50 rounded-r-lg shadow-sm min-w-0">
+            <label className="block text-lg font-semibold text-gray-800 mb-3">
+              {currentIndex + 1}. {qq.text} {qq.required && <span className="text-red-500">*</span>}
+            </label>
+
+            {qq.type === 'lsas' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Miedo/ansiedad (0-3)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={3}
+                    step={1}
+                    inputMode="numeric"
+                    placeholder="0 a 3"
+                    value={answers[`${qq.id}|miedo`] ?? ''}
+                    onChange={(e) => handleChange(`${qq.id}|miedo`, Number(e.target.value))}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500"
+                    required={qq.required}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Evitación (0-3)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={3}
+                    step={1}
+                    inputMode="numeric"
+                    placeholder="0 a 3"
+                    value={answers[`${qq.id}|evitacion`] ?? ''}
+                    onChange={(e) => handleChange(`${qq.id}|evitacion`, Number(e.target.value))}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500"
+                    required={qq.required}
+                  />
+                </div>
+              </div>
+            ) : qq.type === 'multiple-choice' && qq.options && qq.options.length > 0 ? (
+              <div className="space-y-2 min-w-0">
+                {qq.options.map((opt, i) => (
+                  <label key={`${qq.id}-${i}`} className="relative flex items-start gap-3 w-full min-w-0">
+                    <input
+                      type="radio"
+                      name={`q-${qq.id}`}
+                      value={String(opt.value)}
+                      checked={String(answers[qq.id] ?? '') === String(opt.value)}
+                      onChange={(e) => handleChange(qq.id, Number(e.target.value))}
+                      className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 shrink-0 relative z-10"
+                      required={qq.required}
+                    />
+                    <span className="text-gray-800 flex-1 min-w-0 whitespace-pre-wrap break-words leading-normal relative z-10">
+                      {opt.label}
+                    </span>
+                    <span aria-hidden className="absolute inset-0 rounded bg-transparent z-0" />
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <input
+                type="text"
+                value={answers[qq.id] || ''}
+                onChange={(e) => handleChange(qq.id, e.target.value)}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500"
+                required={qq.required}
+              />
+            )}
+          </div>
+        ))}
+
+        {/* Controles */}
+        <div className="flex justify-between items-center pt-4 border-t border-gray-200">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={goPrev}
+              disabled={currentIndex === 0}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 disabled:opacity-50 hover:bg-gray-100 transition-colors"
+            >
+              Anterior
+            </button>
+          </div>
+          <div>
+            {currentIndex < questions.length - 1 ? (
+              <button
+                type="button"
+                onClick={goNext}
+                disabled={!validateCurrent()}
+                className="px-6 py-3 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 disabled:opacity-50 transition-colors"
+              >
+                Siguiente
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!validateCurrent()}
+                className="px-6 py-3 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 disabled:opacity-50 transition-colors"
+              >
+                Completar Encuesta
+              </button>
+            )}
+          </div>
         </div>
       </form>
     </div>
   );
 };
+

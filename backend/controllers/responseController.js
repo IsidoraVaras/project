@@ -123,11 +123,11 @@ const createResponse = async (req, res) => {
 
     const pool = await getConnection();
     const hasResultadoFK = await columnExists(pool, 'dbo', 'respuestas', 'id_resultado');
-    const hasTotalCol = await columnExists(pool, 'dbo', 'resultados', 'puntaje_total');
-    const hasResumenCol = await columnExists(pool, 'dbo', 'resultados', 'resumen_json');
+    // Por ahora en dbo.resultados solo guardaremos la fecha (y llaves).
+    // No usamos puntaje_total ni resumen_json en esta inserciÃ³n.
 
+    // Podemos seguir calculando totales para devolver al frontend, pero NO los guardamos en dbo.resultados ahora.
     const totals = await calculateScores(sid, answers);
-    const subRows = await calculateSubscaleRows(sid, answers);
 
     const tx = new sql.Transaction(pool);
     await tx.begin();
@@ -141,30 +141,7 @@ const createResponse = async (req, res) => {
                 OUTPUT INSERTED.id VALUES (@fecha, @id_usuario, @id_encuesta)`);
       const resultadoId = ins.recordset[0].id;
 
-      if (hasTotalCol) {
-        await reqTx
-          .input('rid', sql.Int, resultadoId)
-          .input('total', sql.Int, totals.total)
-          .query('UPDATE dbo.resultados SET puntaje_total=@total WHERE id=@rid');
-      }
-      if (hasResumenCol) {
-        await reqTx
-          .input('rid2', sql.Int, resultadoId)
-          .input('json', sql.NVarChar(sql.MAX), JSON.stringify(totals.subscales || {}))
-          .query('UPDATE dbo.resultados SET resumen_json=@json WHERE id=@rid2');
-      }
-
-      // Persistir subescalas si la tabla existe
-      const hasRS = (await reqTx.query(`SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('dbo.resultados_subescalas') AND type='U'`)).recordset.length > 0;
-      if (hasRS) {
-        for (const r of subRows) {
-          await new sql.Request(tx)
-            .input('id_resultado', sql.Int, resultadoId)
-            .input('id_subescala', sql.Int, r.id_subescala)
-            .input('puntaje', sql.Int, r.puntaje)
-            .query('INSERT INTO dbo.resultados_subescalas (id_resultado, id_subescala, puntaje) VALUES (@id_resultado, @id_subescala, @puntaje)');
-        }
-      }
+      // No actualizar columnas puntaje_total ni resumen_json; tampoco insertar resultados_subescalas por ahora.
 
       // Respuestas
       for (const a of answers) {
@@ -340,25 +317,58 @@ const getResponses = async (_req, res) => {
 const getResultsByUser = async (req, res) => {
   try {
     const userId = parseInt(req.params.id, 10);
-    if (Number.isNaN(userId)) return res.status(400).json({ message: 'ID de usuario invÃ¡lido' });
+    if (Number.isNaN(userId)) return res.status(400).json({ message: 'ID de usuario inválido' });
 
     const pool = await getConnection();
-    const hasTotalCol = await columnExists(pool, 'dbo', 'resultados', 'puntaje_total');
-    const hasResumenCol = await columnExists(pool, 'dbo', 'resultados', 'resumen_json');
 
     const rs = await pool
       .request()
       .input('uid', sql.Int, userId)
-      .query('SELECT id, fecha, id_encuesta, puntaje_total, resumen_json FROM dbo.resultados WHERE id_usuario=@uid ORDER BY fecha DESC');
+      .query('SELECT id, fecha, id_encuesta FROM dbo.resultados WHERE id_usuario=@uid ORDER BY fecha DESC');
 
     const list = [];
     for (const row of rs.recordset) {
-      let totals;
-      if (hasTotalCol || hasResumenCol) {
-        totals = {
-          total: row.puntaje_total ?? 0,
-          subscales: row.resumen_json ? JSON.parse(row.resumen_json) : {},
-        };
+      // Recalcular totales desde respuestas SIEMPRE por ahora (solo guardamos fecha en resultados)
+      const a = await pool
+        .request()
+        .input('rid', sql.Int, row.id)
+        .query('SELECT id_pregunta, respuesta FROM dbo.respuestas WHERE id_resultado=@rid');
+      const answers = a.recordset.map(r => ({ questionId: String(r.id_pregunta), answer: r.respuesta }));
+      const totals = await calculateScores(row.id_encuesta, answers);
+
+      // Clasificación básica LSAS / FLCAS (solo para mostrar)
+      try {
+        if (totals && totals.subscales && (typeof totals.subscales['Miedo/ansiedad'] !== 'undefined' || typeof totals.subscales['Evitación'] !== 'undefined')) {
+          const t = totals.total || 0;
+          let cls = 'Leve ansiedad social';
+          if (t >= 82) cls = 'Grave Ansiedad Social';
+          else if (t >= 52) cls = 'Moderada Ansiedad social';
+          totals.classification = cls;
+        } else if (String(row.id_encuesta) === '6') {
+          const t = totals.total || 0;
+          let lvl = 'Bajo';
+          if (t >= 90) lvl = 'Alto';
+          else if (t >= 70) lvl = 'Moderado';
+          totals.classification = 'Ansiedad ' + lvl;
+        }
+      } catch {}
+
+      list.push({
+        id: String(row.id),
+        surveyId: String(row.id_encuesta),
+        userId: String(userId),
+        answers: [],
+        totals,
+        completedAt: row.fecha,
+      });
+    }
+
+    res.status(200).json(list);
+  } catch (err) {
+    console.error('Error al obtener resultados del usuario:', err);
+    res.status(500).json({ message: 'Error interno del servidor.' });
+  }
+};
       } else {
         const a = await pool
           .request()
