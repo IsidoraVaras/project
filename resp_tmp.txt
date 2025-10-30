@@ -1,416 +1,569 @@
-   1: // backend/controllers/responseController.js
-   2: import { getConnection } from '../db.js';
-   3: import sql from 'mssql';
-   4: 
-   5: // Utilidad: verificar si existe una columna
-   6: async function columnExists(pool, schema, table, column) {
-   7:   const q = `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=@s AND TABLE_NAME=@t AND COLUMN_NAME=@c`;
-   8:   const rs = await pool
-   9:     .request()
-  10:     .input('s', sql.NVarChar, schema)
-  11:     .input('t', sql.NVarChar, table)
-  12:     .input('c', sql.NVarChar, column)
-  13:     .query(q);
-  14:   return rs.recordset.length > 0;
-  15: }
-  16: 
-  17: // Calcula suma total y subescalas (si existen reglas en dbo.subescalas). También reconoce LSAS por sufijos |miedo y |evitacion en questionId.
-  18: async function calculateScores(surveyId, answers) {
-  19:   const pool = await getConnection();
-  20: 
-  21:   // Orden de preguntas (para usar posibles rangos en subescalas)
-  22:   const qRes = await pool
-  23:     .request()
-  24:     .input('sid', sql.Int, surveyId)
-  25:     .query(`SELECT p.id FROM dbo.preguntas p WHERE p.id_encuesta=@sid ORDER BY p.id`);
-  26: 
-  27:   const orderMap = new Map(); // id -> índice (1..N)
-  28:   qRes.recordset.forEach((row, idx) => orderMap.set(String(row.id), idx + 1));
-  29: 
-  30:   // Respuestas numéricas
-  31:   const numericAnswers = (answers || [])
-  32:     .map(a => ({ qid: String(a.questionId), value: Number(a.answer) }))
-  33:     .filter(a => !Number.isNaN(a.value));
-  34: 
-  35:   const total = numericAnswers.reduce((s, a) => s + a.value, 0);
-  36: 
-  37:   const subscales = {};
-  38: 
-  39:   // Reconocer LSAS por sufijos en questionId
-  40:   const fear = numericAnswers
-  41:     .filter(a => a.qid.toLowerCase().includes('|miedo'))
-  42:     .reduce((s, a) => s + a.value, 0);
-  43:   const avoid = numericAnswers
-  44:     .filter(a => a.qid.toLowerCase().includes('|evitacion'))
-  45:     .reduce((s, a) => s + a.value, 0);
-  46:   if (fear > 0 || avoid > 0) {
-  47:     subscales['Miedo/ansiedad'] = fear;
-  48:     subscales['Evitación'] = avoid;
-  49:   }
-  50: 
-  51:   // Subescalas por rango desde la BD
-  52:   const ssRes = await pool
-  53:     .request()
-  54:     .input('sid', sql.Int, surveyId)
-  55:     .query(`SELECT id, nombre, rango_items FROM dbo.subescalas WHERE id_encuesta=@sid ORDER BY id`);
-  56: 
-  57:   for (const row of ssRes.recordset || []) {
-  58:     const [a, b] = String(row.rango_items).split('-');
-  59:     const start = parseInt(a, 10);
-  60:     const end = parseInt(b, 10);
-  61:     if (Number.isNaN(start) || Number.isNaN(end)) continue;
-  62: 
-  63:     const score = numericAnswers.reduce((s, ans) => {
-  64:       const baseId = ans.qid.split('|')[0];
-  65:       const idx = orderMap.get(baseId);
-  66:       if (!idx) return s;
-  67:       return (idx >= start && idx <= end) ? s + ans.value : s;
-  68:     }, 0);
-  69: 
-  70:     if (typeof subscales[row.nombre] === 'undefined') subscales[row.nombre] = score;
-  71:     else subscales[row.nombre] += score;
-  72:   }
-  73: 
-  74:   return { total, subscales };
-  75: }
-  76: 
-  77: // Para persistir detalle de subescalas (si existe tabla resultados_subescalas)
-  78: async function calculateSubscaleRows(surveyId, answers) {
-  79:   const pool = await getConnection();
-  80: 
-  81:   const qRes = await pool
-  82:     .request()
-  83:     .input('sid', sql.Int, surveyId)
-  84:     .query(`SELECT p.id FROM dbo.preguntas p WHERE p.id_encuesta=@sid ORDER BY p.id`);
-  85:   const orderMap = new Map();
-  86:   qRes.recordset.forEach((row, idx) => orderMap.set(String(row.id), idx + 1));
-  87: 
-  88:   const numericAnswers = (answers || [])
-  89:     .map(a => ({ qid: String(a.questionId), value: Number(a.answer) }))
-  90:     .filter(a => !Number.isNaN(a.value));
-  91: 
-  92:   const ssRes = await pool
-  93:     .request()
-  94:     .input('sid', sql.Int, surveyId)
-  95:     .query(`SELECT id, nombre, rango_items FROM dbo.subescalas WHERE id_encuesta=@sid ORDER BY id`);
-  96: 
-  97:   const rows = [];
-  98:   for (const row of ssRes.recordset || []) {
-  99:     const [a, b] = String(row.rango_items).split('-');
- 100:     const start = parseInt(a, 10);
- 101:     const end = parseInt(b, 10);
- 102:     if (Number.isNaN(start) || Number.isNaN(end)) continue;
- 103:     const score = numericAnswers.reduce((s, ans) => {
- 104:       const baseId = ans.qid.split('|')[0];
- 105:       const idx = orderMap.get(baseId);
- 106:       if (!idx) return s;
- 107:       return (idx >= start && idx <= end) ? s + ans.value : s;
- 108:     }, 0);
- 109:     rows.push({ id_subescala: row.id, puntaje: score });
- 110:   }
- 111:   return rows;
- 112: }
- 113: 
- 114: // POST /api/responses
- 115: const createResponse = async (req, res) => {
- 116:   try {
- 117:     const { surveyId, userId, answers } = req.body || {};
- 118:     const sid = parseInt(surveyId, 10);
- 119:     const uid = parseInt(userId, 10);
- 120:     if (Number.isNaN(sid) || Number.isNaN(uid) || !Array.isArray(answers)) {
- 121:       return res.status(400).json({ message: 'Payload inválido.' });
- 122:     }
- 123: 
- 124:     const pool = await getConnection();
- 125:     const hasResultadoFK = await columnExists(pool, 'dbo', 'respuestas', 'id_resultado');
- 126:     // Por ahora en dbo.resultados solo guardaremos la fecha (y llaves).
- 127:     // No usamos puntaje_total ni resumen_json en esta inserción.
- 128: 
- 129:     // Podemos seguir calculando totales para devolver al frontend, pero NO los guardamos en dbo.resultados ahora.
- 130:     const totals = await calculateScores(sid, answers);
- 131: 
- 132:     const tx = new sql.Transaction(pool);
- 133:     await tx.begin();
- 134:     try {
- 135:       const reqTx = new sql.Request(tx);
- 136:       const ins = await reqTx
- 137:         .input('fecha', sql.DateTime, new Date())
- 138:         .input('id_usuario', sql.Int, uid)
- 139:         .input('id_encuesta', sql.Int, sid)
- 140:         .query(`INSERT INTO dbo.resultados (fecha, id_usuario, id_encuesta)
- 141:                 OUTPUT INSERTED.id VALUES (@fecha, @id_usuario, @id_encuesta)`);
- 142:       const resultadoId = ins.recordset[0].id;
- 143: 
- 144:       // No actualizar columnas puntaje_total ni resumen_json; tampoco insertar resultados_subescalas por ahora.
- 145: 
- 146:       // Respuestas
- 147:       for (const a of answers) {
- 148:         const qKey = String(a.questionId);
- 149:         const [qidStr, subLabelRaw] = qKey.split('|');
- 150:         const qid = parseInt(qidStr, 10);
- 151:         if (Number.isNaN(qid)) continue;
- 152: 
- 153:         const valueNum = Number(a.answer);
- 154:         let optionId = null;
- 155:         if (!Number.isNaN(valueNum)) {
- 156:           let query = 'SELECT TOP 1 id FROM dbo.opciones_respuesta WHERE id_pregunta=@qid AND valor=@val';
- 157:           const r = new sql.Request(tx).input('qid', sql.Int, qid).input('val', sql.NVarChar, String(valueNum));
- 158:           if (subLabelRaw) {
- 159:             query += ' AND LOWER(COALESCE(subescala, ' + "''" + ')) = @sub';
- 160:             r.input('sub', sql.NVarChar, subLabelRaw.toLowerCase());
- 161:           }
- 162:           const or = await r.query(query);
- 163:           optionId = or.recordset[0]?.id ?? null;
- 164:         }
- 165: 
- 166:         const baseReq = new sql.Request(tx)
- 167:           .input('respuesta', sql.NVarChar(sql.MAX), String(a.answer))
- 168:           .input('id_pregunta', sql.Int, qid)
- 169:           .input('id_usuario', sql.Int, uid);
- 170: 
- 171:         if (hasResultadoFK) baseReq.input('id_resultado', sql.Int, resultadoId);
- 172:         if (!Number.isNaN(valueNum)) baseReq.input('valor_numerico', sql.Int, valueNum);
- 173:         if (optionId !== null) baseReq.input('id_opcion_respuesta', sql.Int, optionId);
- 174: 
- 175:         // Intentar insertar con columnas extendidas; si falla, degradar
- 176:         try {
- 177:           await baseReq.query(`INSERT INTO dbo.respuestas (respuesta, id_pregunta, id_usuario, ${hasResultadoFK ? 'id_resultado, ' : ''}valor_numerico, id_opcion_respuesta)
- 178:                                VALUES (@respuesta, @id_pregunta, @id_usuario, ${hasResultadoFK ? '@id_resultado, ' : ''}@valor_numerico, @id_opcion_respuesta)`);
- 179:         } catch {
- 180:           const simple = new sql.Request(tx)
- 181:             .input('respuesta', sql.NVarChar(sql.MAX), String(a.answer))
- 182:             .input('id_pregunta', sql.Int, qid)
- 183:             .input('id_usuario', sql.Int, uid);
- 184:           if (hasResultadoFK) {
- 185:             simple.input('id_resultado', sql.Int, resultadoId);
- 186:             await simple.query('INSERT INTO dbo.respuestas (respuesta, id_pregunta, id_usuario, id_resultado) VALUES (@respuesta, @id_pregunta, @id_usuario, @id_resultado)');
- 187:           } else {
- 188:             await simple.query('INSERT INTO dbo.respuestas (respuesta, id_pregunta, id_usuario) VALUES (@respuesta, @id_pregunta, @id_usuario)');
- 189:           }
- 190:         }
- 191:       }
- 192: 
- 193:       await tx.commit();
- 194: 
- 195:       // Clasificación (opcional) para algunas escalas sin promedios
- 196:       try {
- 197:         const info = await pool
- 198:           .request()
- 199:           .input('sid', sql.Int, sid)
- 200:           .query('SELECT titulo FROM dbo.encuestas WHERE id=@sid');
- 201:         const titulo = (info.recordset?.[0]?.titulo || '').toLowerCase();
- 202: 
- 203:         if (titulo.includes('rosenberg')) {
- 204:           const t = totals.total || 0;
- 205:           let cls = 'Autoestima moderada';
- 206:           if (t <= 25) cls = 'Baja autoestima';
- 207:           else if (t >= 36) cls = 'Alta autoestima';
- 208:           totals.classification = cls;
- 209:         } else if (titulo.includes('liebow') || titulo.includes('lsas')) {
- 210:           const t = totals.total || 0;
- 211:           let cls = 'Leve ansiedad social';
- 212:           if (t >= 82) cls = 'Grave Ansiedad Social';
- 213:           else if (t >= 52) cls = 'Moderada Ansiedad social';
- 214:           totals.classification = cls;
- 215:         } else if (titulo.includes('horwitz') || String(sid) === '6') {
- 216:           const t = totals.total || 0;
- 217:           let lvl = 'Bajo';
- 218:           if (t >= 90) lvl = 'Alto';
- 219:           else if (t >= 70) lvl = 'Moderado';
- 220:           totals.classification = 'Ansiedad ' + lvl;
- 221:         }
- 222:       } catch {}
- 223: 
- 224:       const payload = {
- 225:         id: String(resultadoId),
- 226:         surveyId: String(surveyId),
- 227:         userId: String(userId),
- 228:         answers,
- 229:         totals,
- 230:         completedAt: new Date().toISOString(),
- 231:       };
- 232:       return res.status(201).json(payload);
- 233:     } catch (err) {
- 234:       await tx.rollback();
- 235:       console.error('TX error al guardar respuesta:', err);
- 236:       return res.status(500).json({ message: 'Error guardando respuesta.' });
- 237:     }
- 238:   } catch (err) {
- 239:     console.error('Error al crear respuesta:', err);
- 240:     res.status(500).json({ message: 'Error interno del servidor al guardar respuesta.' });
- 241:   }
- 242: };
- 243: 
- 244: // GET /api/responses (admin)
- 245: const getResponses = async (_req, res) => {
- 246:   try {
- 247:     const pool = await getConnection();
- 248:     const hasResultadoFK = await columnExists(pool, 'dbo', 'respuestas', 'id_resultado');
- 249: 
- 250:     const rs = await pool.request().query('SELECT id, fecha, id_usuario, id_encuesta FROM dbo.resultados ORDER BY fecha DESC');
- 251:     const list = [];
- 252:     for (const row of rs.recordset) {
- 253:       let answers = [];
- 254:       if (hasResultadoFK) {
- 255:         const a = await pool
- 256:           .request()
- 257:           .input('rid', sql.Int, row.id)
- 258:           .query(`SELECT r.respuesta, r.id_pregunta, r.valor_numerico, r.id_opcion_respuesta, o.subescala
- 259:                   FROM dbo.respuestas r
- 260:                   LEFT JOIN dbo.opciones_respuesta o ON o.id = r.id_opcion_respuesta
- 261:                   WHERE r.id_resultado=@rid ORDER BY r.id`);
- 262:         answers = a.recordset.map(r => {
- 263:           const baseId = String(r.id_pregunta);
- 264:           const sub = r.subescala ? '|' + String(r.subescala) : '';
- 265:           const qid = baseId + sub;
- 266:           const val = r.valor_numerico ?? (isNaN(Number(r.respuesta)) ? r.respuesta : Number(r.respuesta));
- 267:           return { questionId: qid, answer: val };
- 268:         });
- 269:       } else {
- 270:         const a = await pool
- 271:           .request()
- 272:           .input('uid', sql.Int, row.id_usuario)
- 273:           .input('sid', sql.Int, row.id_encuesta)
- 274:           .query(`SELECT r.respuesta, r.id_pregunta
- 275:                   FROM dbo.respuestas r
- 276:                   WHERE r.id_usuario=@uid AND r.id_pregunta IN (SELECT p.id FROM dbo.preguntas p WHERE p.id_encuesta=@sid)
- 277:                   ORDER BY r.id`);
- 278:         answers = a.recordset.map(r => ({ questionId: String(r.id_pregunta), answer: r.respuesta }));
- 279:       }
- 280: 
- 281:       const totals = await calculateScores(row.id_encuesta, answers);
- 282:       // Clasificación básica para LSAS y FLCAS
- 283:       try {
- 284:         if (answers.some(a => String(a.questionId).includes('|miedo') || String(a.questionId).includes('|evitacion'))) {
- 285:           const t = totals.total || 0;
- 286:           let cls = 'Leve ansiedad social';
- 287:           if (t >= 82) cls = 'Grave Ansiedad Social';
- 288:           else if (t >= 52) cls = 'Moderada Ansiedad social';
- 289:           totals.classification = cls;
- 290:         } else if (String(row.id_encuesta) === '6') {
- 291:           const t = totals.total || 0;
- 292:           let lvl = 'Bajo';
- 293:           if (t >= 90) lvl = 'Alto';
- 294:           else if (t >= 70) lvl = 'Moderado';
- 295:           totals.classification = 'Ansiedad ' + lvl;
- 296:         }
- 297:       } catch {}
- 298: 
- 299:       list.push({
- 300:         id: String(row.id),
- 301:         surveyId: String(row.id_encuesta),
- 302:         userId: String(row.id_usuario),
- 303:         answers,
- 304:         totals,
- 305:         completedAt: row.fecha,
- 306:       });
- 307:     }
- 308: 
- 309:     res.status(200).json(list);
- 310:   } catch (err) {
- 311:     console.error('Error al obtener responses:', err);
- 312:     res.status(500).json({ message: 'Error interno del servidor.' });
- 313:   }
- 314: };
- 315: 
- 316: // GET /api/users/:id/results (usuario)
- 317: const getResultsByUser = async (req, res) => {
- 318:   try {
- 319:     const userId = parseInt(req.params.id, 10);
- 320:     if (Number.isNaN(userId)) return res.status(400).json({ message: 'ID de usuario inv�lido' });
- 321: 
- 322:     const pool = await getConnection();
- 323: 
- 324:     const rs = await pool
- 325:       .request()
- 326:       .input('uid', sql.Int, userId)
- 327:       .query('SELECT id, fecha, id_encuesta FROM dbo.resultados WHERE id_usuario=@uid ORDER BY fecha DESC');
- 328: 
- 329:     const list = [];
- 330:     for (const row of rs.recordset) {
- 331:       // Recalcular totales desde respuestas SIEMPRE por ahora (solo guardamos fecha en resultados)
- 332:       const a = await pool
- 333:         .request()
- 334:         .input('rid', sql.Int, row.id)
- 335:         .query('SELECT id_pregunta, respuesta FROM dbo.respuestas WHERE id_resultado=@rid');
- 336:       const answers = a.recordset.map(r => ({ questionId: String(r.id_pregunta), answer: r.respuesta }));
- 337:       const totals = await calculateScores(row.id_encuesta, answers);
- 338: 
- 339:       // Clasificaci�n b�sica LSAS / FLCAS (solo para mostrar)
- 340:       try {
- 341:         if (totals && totals.subscales && (typeof totals.subscales['Miedo/ansiedad'] !== 'undefined' || typeof totals.subscales['Evitaci�n'] !== 'undefined')) {
- 342:           const t = totals.total || 0;
- 343:           let cls = 'Leve ansiedad social';
- 344:           if (t >= 82) cls = 'Grave Ansiedad Social';
- 345:           else if (t >= 52) cls = 'Moderada Ansiedad social';
- 346:           totals.classification = cls;
- 347:         } else if (String(row.id_encuesta) === '6') {
- 348:           const t = totals.total || 0;
- 349:           let lvl = 'Bajo';
- 350:           if (t >= 90) lvl = 'Alto';
- 351:           else if (t >= 70) lvl = 'Moderado';
- 352:           totals.classification = 'Ansiedad ' + lvl;
- 353:         }
- 354:       } catch {}
- 355: 
- 356:       list.push({
- 357:         id: String(row.id),
- 358:         surveyId: String(row.id_encuesta),
- 359:         userId: String(userId),
- 360:         answers: [],
- 361:         totals,
- 362:         completedAt: row.fecha,
- 363:       });
- 364:     }
- 365: 
- 366:     res.status(200).json(list);
- 367:   } catch (err) {
- 368:     console.error('Error al obtener resultados del usuario:', err);
- 369:     res.status(500).json({ message: 'Error interno del servidor.' });
- 370:   }
- 371: };
- 372:       } else {
- 373:         const a = await pool
- 374:           .request()
- 375:           .input('rid', sql.Int, row.id)
- 376:           .query('SELECT id_pregunta, respuesta FROM dbo.respuestas WHERE id_resultado=@rid');
- 377:         const answers = a.recordset.map(r => ({ questionId: String(r.id_pregunta), answer: r.respuesta }));
- 378:         totals = await calculateScores(row.id_encuesta, answers);
- 379:       }
- 380: 
- 381:       // Clasificación básica LSAS / FLCAS
- 382:       try {
- 383:         if (totals && totals.subscales && (typeof totals.subscales['Miedo/ansiedad'] !== 'undefined' || typeof totals.subscales['Evitación'] !== 'undefined')) {
- 384:           const t = totals.total || 0;
- 385:           let cls = 'Leve ansiedad social';
- 386:           if (t >= 82) cls = 'Grave Ansiedad Social';
- 387:           else if (t >= 52) cls = 'Moderada Ansiedad social';
- 388:           totals.classification = cls;
- 389:         } else if (String(row.id_encuesta) === '6') {
- 390:           const t = totals.total || 0;
- 391:           let lvl = 'Bajo';
- 392:           if (t >= 90) lvl = 'Alto';
- 393:           else if (t >= 70) lvl = 'Moderado';
- 394:           totals.classification = 'Ansiedad ' + lvl;
- 395:         }
- 396:       } catch {}
- 397: 
- 398:       list.push({
- 399:         id: String(row.id),
- 400:         surveyId: String(row.id_encuesta),
- 401:         userId: String(userId),
- 402:         answers: [],
- 403:         totals,
- 404:         completedAt: row.fecha,
- 405:       });
- 406:     }
- 407: 
- 408:     res.status(200).json(list);
- 409:   } catch (err) {
- 410:     console.error('Error al obtener resultados del usuario:', err);
- 411:     res.status(500).json({ message: 'Error interno del servidor.' });
- 412:   }
- 413: };
- 414: 
- 415: export { createResponse, getResponses, getResultsByUser };
- 416: 
+// src/components/AdminDashboard.tsx
+import React, { useState, useEffect } from 'react';
+import { Users, ClipboardList, BarChart3, Eye, ArrowLeft, UserPlus, EyeOff } from 'lucide-react';
+import { User, SurveyResponse, Survey } from '../types';
+
+interface AdminDashboardProps {
+  user: User;
+}
+
+type View = 'overview' | 'responses' | 'user-detail' | 'create-admin';
+
+export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
+  const [currentView, setCurrentView] = useState<View>('overview');
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [clients, setClients] = useState<User[]>([]);
+  const [responses, setResponses] = useState<SurveyResponse[]>([]);
+  const [surveys, setSurveys] = useState<Survey[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [surveyQuestions, setSurveyQuestions] = useState<Record<string, {id: string; text: string}[]>>({});
+  // Formulario de creación de admin
+  const [adminForm, setAdminForm] = useState({ nombre: '', apellido: '', email: '', password: '' });
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [creatingAdmin, setCreatingAdmin] = useState(false);
+  const [createAdminMsg, setCreateAdminMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [clientsRes, responsesRes, surveysRes] = await Promise.all([
+          fetch('http://localhost:3001/api/users'),
+          fetch('http://localhost:3001/api/responses'),
+          fetch('http://localhost:3001/api/surveys'),
+        ]);
+        
+        const clientsData = await clientsRes.json();
+        const responsesData = await responsesRes.json();
+        const surveysRaw = await surveysRes.json();
+
+        setClients(clientsData.filter((u: User) => u.role === 'client'));
+        setResponses(responsesData);
+        // Mapear encuestas del backend a la interfaz Survey
+        const mappedSurveys: Survey[] = surveysRaw.map((s: any) => ({
+          id: String(s.id),
+          title: s.titulo,
+          description: s.descripcion || '',
+          category: String(s.id_categoria),
+          questions: [],
+          createdAt: new Date(),
+          isActive: true,
+          author: s.categoria_nombre || 'Admin',
+          estimatedTime: '5-15 min',
+        }));
+        setSurveys(mappedSurveys);
+
+      } catch (error) {
+        console.error('Error fetching admin data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  // Cargar textos de preguntas para el usuario seleccionado (muestra en detalle)
+  useEffect(() => {
+    const loadQuestions = async () => {
+      if (currentView !== 'user-detail' || !selectedUserId) return;
+      const userResponses = responses.filter(r => String(r.userId) === String(selectedUserId));
+      const surveyIds = Array.from(new Set(userResponses.map(r => String(r.surveyId))));
+      const entries = await Promise.all(
+        surveyIds.map(async (sid) => {
+          try {
+            const res = await fetch(`http://localhost:3001/api/surveys/${sid}/questions`);
+            if (!res.ok) return [sid, []] as const;
+            const data = await res.json();
+            const arr = (data || []).map((q: any) => ({ id: String(q.id), text: q.texto }));
+            return [sid, arr] as const;
+          } catch {
+            return [sid, []] as const;
+          }
+        })
+      );
+      const map: Record<string, {id: string; text: string}[]> = {};
+      for (const [sid, qs] of entries) map[String(sid)] = qs;
+      setSurveyQuestions(map);
+    };
+    loadQuestions();
+  }, [currentView, selectedUserId, responses]);
+
+  if (loading) {
+    return <div className="text-center py-12">Cargando datos del panel de administración...</div>;
+  }
+  
+  const getResponsesForUser = (userId: string) => {
+    return responses.filter(r => String(r.userId) === String(userId));
+  };
+
+  const renderOverview = () => (
+    <div>
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Panel de Administración</h2>
+        <p className="text-gray-700 text-lg">Resumen general del sistema de encuestas</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Participantes</p>
+              <p className="text-3xl font-bold text-gray-900">{clients.length}</p>
+            </div>
+            <Users className="h-8 w-8 text-orange-500" />
+          </div>
+        </div>
+
+        <div className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Encuestas Disponibles</p>
+              <p className="text-3xl font-bold text-gray-900">{surveys.filter(s => s.isActive).length}</p>
+            </div>
+            <ClipboardList className="h-8 w-8 text-orange-500" />
+          </div>
+        </div>
+
+        <div className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Respuestas Recibidas</p>
+              <p className="text-3xl font-bold text-gray-900">{responses.length}</p>
+            </div>
+            <BarChart3 className="h-8 w-8 text-orange-500" />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm">
+        <h3 className="text-xl font-bold text-gray-900 mb-6">Participantes y sus Encuestas</h3>
+        <div className="space-y-4">
+          {clients.filter(c => getResponsesForUser(c.id).length > 0).map((client) => {
+            const userResponses = getResponsesForUser(client.id);
+            return (
+              <div key={client.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-300">
+                <div className="flex-1">
+                  <h4 className="font-semibold text-gray-900">{client.nombre} {client.apellido}</h4>
+                  <p className="text-sm text-gray-600">{client.email}</p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {userResponses.length} encuesta{userResponses.length !== 1 ? 's' : ''} completada{userResponses.length !== 1 ? 's' : ''}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Última: {new Date(Math.max(...userResponses.map(r => new Date(r.completedAt as any).getTime()))).toLocaleDateString('es-ES')}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedUserId(client.id);
+                    setCurrentView('user-detail');
+                  }}
+                  className="flex items-center space-x-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors"
+                >
+                  <Eye className="h-4 w-4" />
+                  <span>Ver detalles</span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderResponses = () => (
+    <div>
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Todas las Respuestas</h2>
+        <p className="text-gray-700 text-lg">Lista completa de encuestas respondidas</p>
+      </div>
+
+      <div className="space-y-4">
+        {responses.map((response) => {
+          const user = clients.find(u => u.id === response.userId);
+          const survey = surveys.find(s => s.id === response.surveyId);
+          
+          return (
+            <div key={response.id} className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{survey?.title}</h3>
+                  <p className="text-gray-600">Respondida por: <span className="font-medium">{user?.nombre} {user?.apellido}</span></p>
+                  <p className="text-sm text-gray-500">{new Date(response.completedAt).toLocaleDateString('es-ES', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedUserId(response.userId);
+                    setCurrentView('user-detail');
+                  }}
+                  className="flex items-center space-x-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors"
+                >
+                  <Eye className="h-4 w-4" />
+                  <span>Ver detalles</span>
+                </button>
+              </div>
+
+              <div className="border-t border-gray-300 pt-4">
+                <h4 className="text-gray-900 font-medium mb-3">Respuestas:</h4>
+                <div className="grid gap-3">
+                  {response.answers.slice(0, 2).map((answer, index) => {
+                    const question = surveys.find(s => s.id === response.surveyId)?.questions.find(q => q.id === answer.questionId);
+                    return (
+                      <div key={index} className="bg-gray-50 p-3 rounded-lg border border-gray-300">
+                        <p className="text-gray-700 text-sm mb-1">{question?.text}</p>
+                        <p className="text-gray-900 font-medium">{answer.answer.toString()}</p>
+                      </div>
+                    );
+                  })}
+                  {response.answers.length > 2 && (
+                    <p className="text-sm text-gray-500 italic">
+                      ... y {response.answers.length - 2} respuesta{response.answers.length - 2 !== 1 ? 's' : ''} más
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderCreateAdmin = () => (
+    <div>
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Crear Usuario Administrador</h2>
+      </div>
+
+      <div className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm max-w-2xl">
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setCreatingAdmin(true);
+            setCreateAdminMsg(null);
+            try {
+              const res = await fetch('http://localhost:3001/api/admin/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(adminForm),
+              });
+              if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.message || 'No se pudo crear el administrador');
+              }
+              await res.json();
+              setCreateAdminMsg({ type: 'success', text: 'Administrador creado correctamente.' });
+              setAdminForm({ nombre: '', apellido: '', email: '', password: '' });
+              // actualizar lista de usuarios si ya estaba cargada
+              try {
+                const clientsRes = await fetch('http://localhost:3001/api/users');
+                const clientsData = await clientsRes.json();
+                setClients(clientsData.filter((u: any) => u.role === 'client'));
+              } catch {}
+            } catch (err: any) {
+              setCreateAdminMsg({ type: 'error', text: err.message || 'Error al crear administrador.' });
+            } finally {
+              setCreatingAdmin(false);
+            }
+          }}
+          className="space-y-5"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+              <input
+                type="text"
+                value={adminForm.nombre}
+                onChange={(e) => setAdminForm((f) => ({ ...f, nombre: e.target.value }))}
+                className="w-full rounded-lg border-2 border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Apellido</label>
+              <input
+                type="text"
+                value={adminForm.apellido}
+                onChange={(e) => setAdminForm((f) => ({ ...f, apellido: e.target.value }))}
+                className="w-full rounded-lg border-2 border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Correo</label>
+            <input
+              type="email"
+              value={adminForm.email}
+              onChange={(e) => setAdminForm((f) => ({ ...f, email: e.target.value }))}
+              className="w-full rounded-lg border-2 border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+            <div className="relative">
+              <input
+                type={showAdminPassword ? 'text' : 'password'}
+                value={adminForm.password}
+                onChange={(e) => setAdminForm((f) => ({ ...f, password: e.target.value }))}
+                className="w-full rounded-lg border-2 border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 pr-10 outline-none"
+                placeholder="••••••••"
+                required
+              />
+              <button
+                type="button"
+                title={showAdminPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                onClick={() => setShowAdminPassword((v) => !v)}
+                className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-600 hover:text-gray-900"
+              >
+                {showAdminPassword ? (
+                  <EyeOff className="h-5 w-5" />
+                ) : (
+                  <Eye className="h-5 w-5" />
+                )}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">El rol asignado será <span className="font-semibold">admin</span>.</p>
+          </div>
+
+          {createAdminMsg && (
+            <div
+              className={`rounded-lg p-3 border-2 ${
+                createAdminMsg.type === 'success'
+                  ? 'border-green-300 bg-green-50 text-green-800'
+                  : 'border-red-300 bg-red-50 text-red-800'
+              }`}
+            >
+              {createAdminMsg.text}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={creatingAdmin}
+              className={`inline-flex items-center px-5 py-2 rounded-lg text-white transition-colors ${
+                creatingAdmin ? 'bg-orange-400' : 'bg-orange-600 hover:bg-orange-700'
+              }`}
+            >
+              <UserPlus className="h-5 w-5 mr-2" />
+              {creatingAdmin ? 'Creando...' : 'Crear Admin'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+
+  const renderUserDetail = () => {
+    const user = clients.find(u => u.id === selectedUserId);
+    const userResponses = getResponsesForUser(selectedUserId);
+
+    if (!user) return null;
+
+    return (
+      <div>
+        <div className="flex items-center mb-8">
+          <button
+            onClick={() => setCurrentView('overview')}
+            className="flex items-center text-gray-600 hover:text-gray-900 mr-6 transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5 mr-2" />
+            Volver al panel
+          </button>
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Detalles de {user.nombre} {user.apellido}</h2>
+            <p className="text-gray-700 text-lg">{user.email}</p>
+          </div>
+        </div>
+
+        <div className="mb-6 bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm">
+          <h3 className="text-lg font-bold text-gray-900 mb-4">Resumen de Participación</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm text-gray-600">Encuestas Completadas</p>
+              <p className="text-2xl font-bold text-gray-900">{userResponses.length}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Última Actividad</p>
+              <p className="text-sm text-gray-900">
+                {userResponses.length > 0 
+                  ? new Date(Math.max(...userResponses.map(r => new Date(r.completedAt).getTime()))).toLocaleDateString('es-ES')
+                  : 'Sin actividad'
+                }
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <h3 className="text-xl font-bold text-gray-900">Encuestas Completadas</h3>
+          
+          {userResponses.length === 0 ? (
+            <div className="text-center py-12 bg-white border-2 border-gray-300 rounded-xl">
+              <ClipboardList className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600">Este usuario no ha completado ninguna encuesta aún.</p>
+            </div>
+          ) : (
+            userResponses.map((response) => {
+              const survey = surveys.find(s => s.id === response.surveyId);
+              
+              return (
+                <div key={response.id} className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm">
+                  <div className="mb-4">
+                    <h4 className="text-lg font-bold text-gray-900">{survey?.title}</h4>
+                    <p className="text-gray-600">{survey?.description}</p>
+                    <p className="text-sm text-gray-600 mt-1">Categoría: {survey?.author || survey?.category}</p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Completada el {new Date(response.completedAt).toLocaleDateString('es-ES', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  </div>
+
+                  <div className="border-t border-gray-300 pt-4">
+                    {response.totals && (
+                      <div className="mb-4 bg-gray-50 p-3 rounded border">
+                        <div className="text-gray-800">
+                          <p>
+                            Puntaje total: <span className="font-semibold">{response.totals.total}</span>
+                            {response.totals.classification && (
+                              <span className="ml-2">({response.totals.classification})</span>
+                            )}
+                          </p>
+                          {typeof response.totals.avg !== 'undefined' && (
+                            <p>Promedio: <span className="font-semibold">{response.totals.avg}</span></p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <h5 className="text-gray-900 font-medium mb-3">Respuestas completas:</h5>
+                    <div className="grid gap-3">
+                      {(() => {
+                        const groups: Record<string, { miedo?: any; evitacion?: any; raw: any[] }> = {};
+                        for (const a of response.answers) {
+                          const [base, sub] = String(a.questionId).split('|');
+                          if (!groups[base]) groups[base] = { raw: [] };
+                          if (sub === 'miedo') groups[base].miedo = a.answer;
+                          else if (sub === 'evitacion') groups[base].evitacion = a.answer;
+                          else groups[base].raw.push(a);
+                        }
+                        const items = Object.entries(groups);
+                        const arr: JSX.Element[] = [];
+                        const qArr = surveyQuestions[String(response.surveyId)] || [];
+                        const getText = (baseId: string) => qArr.find(q => q.id === baseId)?.text || `Ítem ${baseId}`;
+
+                        items.forEach(([baseId, g], index) => {
+                          if (g.miedo !== undefined || g.evitacion !== undefined) {
+                            arr.push(
+                              <div key={`lsas-${baseId}-${index}`} className="bg-gray-50 p-4 rounded-lg border border-gray-300">
+                                <p className="text-gray-700 text-sm mb-2 font-medium">{getText(baseId)}</p>
+                                <p className="text-gray-900 font-medium">Miedo/ansiedad: {String(g.miedo ?? '-') } | Evitación: {String(g.evitacion ?? '-')}</p>
+                              </div>
+                            );
+                          }
+                          g.raw.forEach((answer, i) => {
+                            arr.push(
+                              <div key={`raw-${baseId}-${i}`} className="bg-gray-50 p-4 rounded-lg border border-gray-300">
+                                <p className="text-gray-700 text-sm mb-2 font-medium">{getText(baseId)}</p>
+                                <span className="text-gray-900 font-medium">{String(answer.answer)}</span>
+                              </div>
+                            );
+                          });
+                        });
+                        return arr;
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderContent = () => {
+    switch (currentView) {
+      case 'overview':
+        return renderOverview();
+      case 'responses':
+        return renderResponses();
+      case 'user-detail':
+        return renderUserDetail();
+      case 'create-admin':
+        return renderCreateAdmin();
+      default:
+        return renderOverview();
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex gap-8">
+          {/* Sidebar */}
+          <div className="w-64 flex-shrink-0">
+            <nav className="bg-white border-2 border-gray-300 rounded-xl p-4 shadow-sm">
+              <div className="space-y-2">
+                <button
+                  onClick={() => setCurrentView('overview')}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${
+                    currentView === 'overview' || currentView === 'user-detail'
+                      ? 'bg-orange-600 text-white'
+                      : 'text-gray-800 hover:bg-gray-100'
+                  }`}
+                >
+                  <BarChart3 className="h-5 w-5" />
+                  <span>Panel General</span>
+                </button>
+
+                <button
+                  onClick={() => setCurrentView('responses')}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${
+                    currentView === 'responses'
+                      ? 'bg-orange-600 text-white'
+                      : 'text-gray-800 hover:bg-gray-100'
+                  }`}
+                >
+                  <ClipboardList className="h-5 w-5" />
+                  <span>Todas las Respuestas</span>
+                </button>
+
+                <button
+                  onClick={() => setCurrentView('create-admin')}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${
+                    currentView === 'create-admin'
+                      ? 'bg-orange-600 text-white'
+                      : 'text-gray-800 hover:bg-gray-100'
+                  }`}
+                >
+                  <UserPlus className="h-5 w-5" />
+                  <span>Crear Admin</span>
+                </button>
+              </div>
+            </nav>
+          </div>
+
+          {/* Main Content */}
+          <div className="flex-1">
+            {renderContent()}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+

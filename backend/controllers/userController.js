@@ -164,3 +164,50 @@ export const createAdminUser = async (req, res) => {
     return res.status(500).json({ message: 'Error interno del servidor.' });
   }
 };
+
+// --- NUEVO: eliminar usuario con rol admin ---
+export const deleteAdminUser = async (req, res) => {
+  const idParam = req.params.id;
+  const id = parseInt(idParam, 10);
+  if (Number.isNaN(id)) {
+    return res.status(400).json({ message: 'ID inválido.' });
+  }
+
+  try {
+    const pool = await getConnection();
+
+    // Verificar existencia y rol
+    const userRs = await pool
+      .request()
+      .input('id', sql.Int, id)
+      .query('SELECT rol FROM dbo.usuarios WHERE id=@id');
+    if (userRs.recordset.length === 0) {
+      return res.status(404).json({ message: 'No existe el usuario.' });
+    }
+    const rol = String(userRs.recordset[0].rol || '').toLowerCase();
+    if (rol !== 'admin') {
+      return res.status(403).json({ message: 'El usuario no tiene rol admin.' });
+    }
+
+    // Eliminar por ID (ya verificado que es admin)
+    const result = await pool
+      .request()
+      .input('id', sql.Int, id)
+      .query('DELETE FROM dbo.usuarios WHERE id=@id');
+
+    const affected = Array.isArray(result.rowsAffected)
+      ? result.rowsAffected.reduce((a, b) => a + b, 0)
+      : (result.rowsAffected || 0);
+    if (!affected) {
+      return res.status(500).json({ message: 'No se pudo eliminar (sin cambios).' });
+    }
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('Error al eliminar admin:', err);
+    // SQL Server FK violation
+    if (err && (err.number === 547 || String(err.message || '').includes('DELETE statement conflicted'))) {
+      return res.status(409).json({ message: 'No se puede eliminar: tiene registros relacionados.' });
+    }
+    return res.status(500).json({ message: 'Error interno del servidor.' });
+  }
+};
