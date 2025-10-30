@@ -1,18 +1,21 @@
 // src/components/AdminDashboard.tsx
 import React, { useState, useEffect } from 'react';
-import { Users, ClipboardList, BarChart3, Eye, ArrowLeft, UserPlus, EyeOff } from 'lucide-react';
+import { Users, ClipboardList, BarChart3, Eye, ArrowLeft, UserPlus, EyeOff, Trash2, Shield, AlertTriangle, X } from 'lucide-react';
 import { User, SurveyResponse, Survey } from '../types';
 
 interface AdminDashboardProps {
   user: User;
 }
 
-type View = 'overview' | 'responses' | 'user-detail' | 'create-admin';
+type View = 'overview' | 'responses' | 'user-detail' | 'create-admin' | 'manage-admins';
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
   const [currentView, setCurrentView] = useState<View>('overview');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [clients, setClients] = useState<User[]>([]);
+  const [admins, setAdmins] = useState<User[]>([]);
+  // Modal de confirmación de eliminación
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; user: User | null; loading: boolean; error?: string }>({ open: false, user: null, loading: false });
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +40,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
         const surveysRaw = await surveysRes.json();
 
         setClients(clientsData.filter((u: User) => u.role === 'client'));
+        setAdmins(clientsData.filter((u: User) => u.role === 'admin'));
         setResponses(responsesData);
         // Mapear encuestas del backend a la interfaz Survey
         const mappedSurveys: Survey[] = surveysRaw.map((s: any) => ({
@@ -233,6 +237,104 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
     </div>
   );
 
+  const renderManageAdmins = () => (
+    <div>
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Administradores</h2>
+      </div>
+
+      <div className="space-y-4">
+        {admins.length === 0 ? (
+          <div className="text-center py-12 bg-white border-2 border-gray-300 rounded-xl">
+            <Shield className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-600">No hay administradores creados.</p>
+          </div>
+        ) : (
+          admins.map((u) => (
+            <div key={u.id} className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">{u.nombre} {u.apellido}</h3>
+                <p className="text-gray-600">{u.email}</p>
+              </div>
+              <button
+                onClick={() => setDeleteModal({ open: true, user: u, loading: false })}
+                className="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                title="Eliminar administrador"
+              >
+                <Trash2 className="h-4 w-4 mr-2" /> Eliminar
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  const renderDeleteModal = () => {
+    if (!deleteModal.open || !deleteModal.user) return null;
+    const u = deleteModal.user;
+    const close = () => !deleteModal.loading && setDeleteModal({ open: false, user: null, loading: false });
+    const confirmDelete = async () => {
+      try {
+        setDeleteModal((m) => ({ ...m, loading: true, error: undefined }));
+        const res = await fetch(`http://localhost:3001/api/admin/users/${u.id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.message || 'No se pudo eliminar');
+        }
+        setAdmins((prev) => prev.filter(a => a.id !== u.id));
+        setDeleteModal({ open: false, user: null, loading: false });
+      } catch (e: any) {
+        setDeleteModal((m) => ({ ...m, loading: false, error: e.message || 'Error al eliminar' }));
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-50">
+        <div className="absolute inset-0 bg-black/40" onClick={close} />
+        <div className="absolute inset-0 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white border-2 border-gray-300 rounded-xl shadow-lg">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <div className="flex items-center text-red-700">
+                <AlertTriangle className="h-5 w-5 mr-2" />
+                <h3 className="text-lg font-semibold">Confirmar eliminación</h3>
+              </div>
+              <button onClick={close} className="text-gray-500 hover:text-gray-800" aria-label="Cerrar">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-2">
+              <p className="text-gray-800">¿Estás seguro de eliminar al administrador:</p>
+              <p className="text-gray-900 font-semibold">{u.nombre} {u.apellido}</p>
+              <p className="text-sm text-gray-600">Esta acción es permanente y no se puede deshacer.</p>
+              {deleteModal.error && (
+                <div className="mt-2 rounded-lg border-2 border-red-300 bg-red-50 text-red-800 px-3 py-2 text-sm">
+                  {deleteModal.error}
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-4 flex justify-end gap-3 border-t border-gray-200">
+              <button
+                onClick={close}
+                disabled={deleteModal.loading}
+                className="px-4 py-2 rounded-lg border-2 border-gray-300 text-gray-800 hover:bg-gray-100 disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleteModal.loading}
+                className={`px-4 py-2 rounded-lg text-white ${deleteModal.loading ? 'bg-red-400' : 'bg-red-600 hover:bg-red-700'}`}
+              >
+                {deleteModal.loading ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderCreateAdmin = () => (
     <div>
       <div className="mb-8">
@@ -263,6 +365,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
                 const clientsRes = await fetch('http://localhost:3001/api/users');
                 const clientsData = await clientsRes.json();
                 setClients(clientsData.filter((u: any) => u.role === 'client'));
+                setAdmins(clientsData.filter((u: any) => u.role === 'admin'));
               } catch {}
             } catch (err: any) {
               setCreateAdminMsg({ type: 'error', text: err.message || 'Error al crear administrador.' });
@@ -503,6 +606,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
         return renderResponses();
       case 'user-detail':
         return renderUserDetail();
+      case 'manage-admins':
+        return renderManageAdmins();
       case 'create-admin':
         return renderCreateAdmin();
       default:
@@ -543,6 +648,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
                 </button>
 
                 <button
+                  onClick={() => setCurrentView('manage-admins')}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${
+                    currentView === 'manage-admins'
+                      ? 'bg-orange-600 text-white'
+                      : 'text-gray-800 hover:bg-gray-100'
+                  }`}
+                >
+                  <Shield className="h-5 w-5" />
+                  <span>Administradores</span>
+                </button>
+
+                <button
                   onClick={() => setCurrentView('create-admin')}
                   className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${
                     currentView === 'create-admin'
@@ -563,6 +680,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
           </div>
         </div>
       </div>
+      {renderDeleteModal()}
     </div>
   );
 };
