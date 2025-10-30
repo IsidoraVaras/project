@@ -1,7 +1,7 @@
 // backend/routes/userRoutes.js
 
 import express from 'express';
-import { registerUser, loginUser, listUsers } from '../controllers/userController.js';
+import { registerUser, loginUser, listUsers, createAdminUser } from '../controllers/userController.js';
 import {
   getCategories,
   getSurveysByCategory,
@@ -16,6 +16,8 @@ const router = express.Router();
 router.post('/register', registerUser);
 router.post('/login', loginUser);
 router.get('/users', listUsers);
+// Crear admin (siempre rol 'admin')
+router.post('/admin/users', createAdminUser);
 
 // Encuestas y preguntas
 router.get('/categories', getCategories);

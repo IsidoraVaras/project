@@ -117,3 +117,50 @@ export const listUsers = async (_req, res) => {
     res.status(500).json({ message: 'Error interno del servidor.' });
   }
 };
+
+// --- NUEVO: crear usuario con rol admin ---
+export const createAdminUser = async (req, res) => {
+  const { nombre, apellido, email, password } = req.body || {};
+
+  if (!nombre || !apellido || !email || !password) {
+    return res.status(400).json({ message: 'Todos los campos son obligatorios.' });
+  }
+
+  try {
+    const pool = await getConnection();
+
+    // verificar si existe email
+    const existing = await pool
+      .request()
+      .input('email', sql.NVarChar, email)
+      .query('SELECT 1 FROM dbo.usuarios WHERE email=@email');
+    if (existing.recordset.length > 0) {
+      return res.status(409).json({ message: 'Este correo ya está registrado.' });
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+
+    const insert = await pool
+      .request()
+      .input('nombre', sql.NVarChar, nombre)
+      .input('apellido', sql.NVarChar, apellido)
+      .input('email', sql.NVarChar, email)
+      .input('password', sql.NVarChar, hashed)
+      .input('rol', sql.NVarChar, 'admin')
+      .query(
+        'INSERT INTO dbo.usuarios (nombre, apellido, email, password, rol) OUTPUT INSERTED.id VALUES (@nombre, @apellido, @email, @password, @rol)'
+      );
+
+    const id = insert.recordset[0].id;
+    return res.status(201).json({
+      id: String(id),
+      nombre,
+      apellido,
+      email,
+      role: 'admin',
+    });
+  } catch (err) {
+    console.error('Error al crear admin:', err);
+    return res.status(500).json({ message: 'Error interno del servidor.' });
+  }
+};

@@ -178,16 +178,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
               {isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
             </button>
           </div>
-
-          {isLogin && (
-            <div className="mt-4 p-4 bg-gray-100 rounded-lg border border-gray-300">
-              <p className="text-sm text-gray-800 mb-2">Usuarios de prueba:</p>
-              <div className="text-xs text-gray-700 space-y-1">
-                <div>Admin: admin@encuestas.com | pass: 123456</div>
-                <div>Cliente: juan@email.com | pass: 123456</div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

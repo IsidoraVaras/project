@@ -1,13 +1,13 @@
 // src/components/AdminDashboard.tsx
 import React, { useState, useEffect } from 'react';
-import { Users, ClipboardList, BarChart3, Eye, ArrowLeft } from 'lucide-react';
+import { Users, ClipboardList, BarChart3, Eye, ArrowLeft, UserPlus, EyeOff } from 'lucide-react';
 import { User, SurveyResponse, Survey } from '../types';
 
 interface AdminDashboardProps {
   user: User;
 }
 
-type View = 'overview' | 'responses' | 'user-detail';
+type View = 'overview' | 'responses' | 'user-detail' | 'create-admin';
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
   const [currentView, setCurrentView] = useState<View>('overview');
@@ -17,6 +17,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [surveyQuestions, setSurveyQuestions] = useState<Record<string, {id: string; text: string}[]>>({});
+  // Formulario de creación de admin
+  const [adminForm, setAdminForm] = useState({ nombre: '', apellido: '', email: '', password: '' });
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [creatingAdmin, setCreatingAdmin] = useState(false);
+  const [createAdminMsg, setCreateAdminMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -228,6 +233,135 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
     </div>
   );
 
+  const renderCreateAdmin = () => (
+    <div>
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Crear Usuario Administrador</h2>
+      </div>
+
+      <div className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm max-w-2xl">
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setCreatingAdmin(true);
+            setCreateAdminMsg(null);
+            try {
+              const res = await fetch('http://localhost:3001/api/admin/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(adminForm),
+              });
+              if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.message || 'No se pudo crear el administrador');
+              }
+              await res.json();
+              setCreateAdminMsg({ type: 'success', text: 'Administrador creado correctamente.' });
+              setAdminForm({ nombre: '', apellido: '', email: '', password: '' });
+              // actualizar lista de usuarios si ya estaba cargada
+              try {
+                const clientsRes = await fetch('http://localhost:3001/api/users');
+                const clientsData = await clientsRes.json();
+                setClients(clientsData.filter((u: any) => u.role === 'client'));
+              } catch {}
+            } catch (err: any) {
+              setCreateAdminMsg({ type: 'error', text: err.message || 'Error al crear administrador.' });
+            } finally {
+              setCreatingAdmin(false);
+            }
+          }}
+          className="space-y-5"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+              <input
+                type="text"
+                value={adminForm.nombre}
+                onChange={(e) => setAdminForm((f) => ({ ...f, nombre: e.target.value }))}
+                className="w-full rounded-lg border-2 border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Apellido</label>
+              <input
+                type="text"
+                value={adminForm.apellido}
+                onChange={(e) => setAdminForm((f) => ({ ...f, apellido: e.target.value }))}
+                className="w-full rounded-lg border-2 border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Correo</label>
+            <input
+              type="email"
+              value={adminForm.email}
+              onChange={(e) => setAdminForm((f) => ({ ...f, email: e.target.value }))}
+              className="w-full rounded-lg border-2 border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+            <div className="relative">
+              <input
+                type={showAdminPassword ? 'text' : 'password'}
+                value={adminForm.password}
+                onChange={(e) => setAdminForm((f) => ({ ...f, password: e.target.value }))}
+                className="w-full rounded-lg border-2 border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 pr-10 outline-none"
+                placeholder="••••••••"
+                required
+              />
+              <button
+                type="button"
+                title={showAdminPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                onClick={() => setShowAdminPassword((v) => !v)}
+                className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-600 hover:text-gray-900"
+              >
+                {showAdminPassword ? (
+                  <EyeOff className="h-5 w-5" />
+                ) : (
+                  <Eye className="h-5 w-5" />
+                )}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">El rol asignado será <span className="font-semibold">admin</span>.</p>
+          </div>
+
+          {createAdminMsg && (
+            <div
+              className={`rounded-lg p-3 border-2 ${
+                createAdminMsg.type === 'success'
+                  ? 'border-green-300 bg-green-50 text-green-800'
+                  : 'border-red-300 bg-red-50 text-red-800'
+              }`}
+            >
+              {createAdminMsg.text}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={creatingAdmin}
+              className={`inline-flex items-center px-5 py-2 rounded-lg text-white transition-colors ${
+                creatingAdmin ? 'bg-orange-400' : 'bg-orange-600 hover:bg-orange-700'
+              }`}
+            >
+              <UserPlus className="h-5 w-5 mr-2" />
+              {creatingAdmin ? 'Creando...' : 'Crear Admin'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+
   const renderUserDetail = () => {
     const user = clients.find(u => u.id === selectedUserId);
     const userResponses = getResponsesForUser(selectedUserId);
@@ -369,6 +503,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
         return renderResponses();
       case 'user-detail':
         return renderUserDetail();
+      case 'create-admin':
+        return renderCreateAdmin();
       default:
         return renderOverview();
     }
@@ -404,6 +540,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
                 >
                   <ClipboardList className="h-5 w-5" />
                   <span>Todas las Respuestas</span>
+                </button>
+
+                <button
+                  onClick={() => setCurrentView('create-admin')}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${
+                    currentView === 'create-admin'
+                      ? 'bg-orange-600 text-white'
+                      : 'text-gray-800 hover:bg-gray-100'
+                  }`}
+                >
+                  <UserPlus className="h-5 w-5" />
+                  <span>Crear Admin</span>
                 </button>
               </div>
             </nav>
