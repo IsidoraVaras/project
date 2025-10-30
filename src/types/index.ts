@@ -27,6 +27,7 @@ export interface Question {
   scaleLabels?: { min: string; max: string };
 }
 
+
 export interface Survey {
   id: string;
   title: string;
