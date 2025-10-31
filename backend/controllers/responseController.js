@@ -119,6 +119,38 @@ async function calculateScores(surveyId, answers) {
     }
   } catch {}
 
+  // Encuesta 7: Tamaño del vocabulario (VST)
+  // Total = respuestas correctas x 100 (familias de palabras)
+  // Interpretación (familias):
+  // 2000–3000: Básico; 5000–6000: Lectura no especializada;
+  // 8000–9000: Alto; 10000+: Dominio casi nativo
+  try {
+    // Detectar VST por id o por tipo_escala 'vst-4' en opciones
+    const only01 = numericAnswers.length > 0 && numericAnswers.every(a => a.value === 0 || a.value === 1);
+    let hasVstScale = false;
+    try {
+      const mrk = await pool
+        .request()
+        .input('sid', sql.Int, surveyId)
+        .query(`SELECT TOP 1 1
+                FROM dbo.opciones_respuesta o
+                JOIN dbo.preguntas p ON p.id = o.id_pregunta
+                WHERE p.id_encuesta=@sid AND LTRIM(RTRIM(LOWER(o.tipo_escala)))='vst-4'`);
+      hasVstScale = (mrk.recordset?.length || 0) > 0;
+    } catch {}
+
+    if (Number(surveyId) === 7 || hasVstScale || (only01 && numericAnswers.length >= 20)) {
+      const correct = numericAnswers.reduce((s, a) => s + (a.value === 1 ? 1 : 0), 0);
+      const families = correct * 100;
+      let cls = undefined;
+      if (families >= 10000) cls = 'Dominio casi nativo';
+      else if (families >= 8000) cls = 'Nivel alto';
+      else if (families >= 5000) cls = 'Lectura no especializada';
+      else if (families >= 2000) cls = 'Nivel básico';
+      return { total: families, subscales, classification: cls };
+    }
+  } catch {}
+
   return { total, subscales };
 }
 
