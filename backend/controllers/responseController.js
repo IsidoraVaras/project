@@ -151,14 +151,22 @@ const createResponse = async (req, res) => {
         let optionId = null;
         try {
           if (!Number.isNaN(valueNum)) {
-            let query = `SELECT TOP 1 id FROM dbo.opciones_respuesta WHERE id_pregunta=@qid AND valor=@val`;
+            let query = `SELECT TOP 1 id
+                         FROM dbo.opciones_respuesta
+                         WHERE id_pregunta=@qid
+                           AND (
+                                 valor=@val
+                              OR TRY_CONVERT(INT, valor)=@valInt
+                           )`;
             const r = new sql.Request(tx)
               .input('qid', sql.Int, qid)
-              .input('val', sql.NVarChar, String(valueNum));
+              .input('val', sql.NVarChar, String(valueNum))
+              .input('valInt', sql.Int, valueNum);
             if (subLabelRaw) {
               query += ` AND LOWER(COALESCE(subescala,''))=@sub`;
               r.input('sub', sql.NVarChar, subLabelRaw.toLowerCase());
             }
+            query += ' ORDER BY orden';
             const or = await r.query(query);
             optionId = or.recordset[0]?.id ?? null;
           }
@@ -201,9 +209,18 @@ const createResponse = async (req, res) => {
       try {
         const rsAns = await new sql.Request(tx)
           .input('rid_fetch', sql.Int, resultadoId)
-          .query(`SELECT r.respuesta, r.valor_numerico, r.id_pregunta, o.subescala
+          .query(`SELECT r.respuesta, r.valor_numerico, r.id_pregunta,
+                         COALESCE(o1.subescala, o2.subescala) AS subescala,
+                         COALESCE(o1.etiqueta, o2.etiqueta) AS etiqueta_opcion
                   FROM dbo.respuestas r
-                  LEFT JOIN dbo.opciones_respuesta o ON o.id = r.id_opcion_respuesta
+                  LEFT JOIN dbo.opciones_respuesta o1 ON o1.id = r.id_opcion_respuesta
+                  LEFT JOIN dbo.opciones_respuesta o2 ON o2.id_pregunta = r.id_pregunta
+                       AND (
+                             o2.valor = CAST(r.valor_numerico AS NVARCHAR(50))
+                          OR TRY_CONVERT(INT, o2.valor) = r.valor_numerico
+                          OR LTRIM(RTRIM(o2.valor)) = LTRIM(RTRIM(CAST(r.respuesta AS NVARCHAR(50))))
+                          OR TRY_CONVERT(INT, o2.valor) = TRY_CONVERT(INT, r.respuesta)
+                           )
                   WHERE r.id_resultado=@rid_fetch ORDER BY r.id`);
         const answersDb = rsAns.recordset.map(r => {
           const baseId = String(r.id_pregunta);
@@ -267,16 +284,26 @@ const getResponses = async (_req, res) => {
         const a = await pool
           .request()
           .input('rid', sql.Int, row.id)
-          .query(`SELECT r.respuesta, r.id_pregunta, r.valor_numerico, r.id_opcion_respuesta, o.subescala
+          .query(`SELECT r.respuesta, r.id_pregunta, r.valor_numerico, r.id_opcion_respuesta,
+                         COALESCE(o1.subescala, o2.subescala) AS subescala,
+                         COALESCE(o1.etiqueta, o2.etiqueta) AS etiqueta_opcion
                   FROM dbo.respuestas r
-                  LEFT JOIN dbo.opciones_respuesta o ON o.id = r.id_opcion_respuesta
+                  LEFT JOIN dbo.opciones_respuesta o1 ON o1.id = r.id_opcion_respuesta
+                  LEFT JOIN dbo.opciones_respuesta o2 ON o2.id_pregunta = r.id_pregunta
+                       AND (
+                             o2.valor = CAST(r.valor_numerico AS NVARCHAR(50))
+                          OR TRY_CONVERT(INT, o2.valor) = r.valor_numerico
+                          OR LTRIM(RTRIM(o2.valor)) = LTRIM(RTRIM(CAST(r.respuesta AS NVARCHAR(50))))
+                          OR TRY_CONVERT(INT, o2.valor) = TRY_CONVERT(INT, r.respuesta)
+                           )
                   WHERE r.id_resultado=@rid ORDER BY r.id`);
         answers = a.recordset.map(r => {
           const baseId = String(r.id_pregunta);
           const sub = r.subescala ? '|' + String(r.subescala) : '';
           const qid = baseId + sub;
           const val = r.valor_numerico ?? (isNaN(Number(r.respuesta)) ? r.respuesta : Number(r.respuesta));
-          return { questionId: qid, answer: val };
+          const label = r.etiqueta_opcion ?? (typeof val === 'number' ? String(val) : String(r.respuesta));
+          return { questionId: qid, answer: val, label };
         });
       } else {
         const a = await pool
