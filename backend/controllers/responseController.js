@@ -91,6 +91,23 @@ async function calculateScores(surveyId, answers) {
     }
   } catch {}
 
+  // Encuesta 5 (MSPSS): el puntaje total es PROMEDIO 1..7
+  try {
+    if (Number(surveyId) === 5) {
+      const count = numericAnswers.length || 1;
+      const avg = count > 0 ? (numericAnswers.reduce((s, a) => s + a.value, 0) / count) : 0;
+      // Guardar como total el promedio, con dos decimales
+      total = Math.round(avg * 100) / 100;
+      // Clasificación según Zimet et al. (1988)
+      let cls = undefined;
+      if (avg >= 1.0 && avg <= 2.9) cls = 'Bajo apoyo percibido';
+      else if (avg >= 3.0 && avg <= 5.0) cls = 'Apoyo moderado';
+      else if (avg >= 5.1 && avg <= 7.0) cls = 'Alto apoyo percibido';
+      // Devolver también avg explícito
+      return { total, subscales, avg: Math.round(avg * 100) / 100, classification: cls };
+    }
+  } catch {}
+
   return { total, subscales };
 }
 
