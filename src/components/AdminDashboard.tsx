@@ -567,19 +567,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
                   <div className="border-t border-gray-300 pt-4">
                     {response.totals && (
-                      <div className="mb-4 bg-gray-50 p-3 rounded border">
-                        <div className="text-gray-800">
-                          <p>
-                            Puntaje total: <span className="font-semibold">{response.totals.total}</span>
-                            {response.totals.classification && (
-                              <span className="ml-2">({response.totals.classification})</span>
+                      <>
+                        <div className="mb-4 bg-gray-50 p-3 rounded border">
+                          <div className="text-gray-800">
+                            <p>
+                              Puntaje total: <span className="font-semibold">{response.totals.total}</span>
+                              {response.totals.classification && (
+                                <span className="ml-2">({response.totals.classification})</span>
+                              )}
+                            </p>
+                            {typeof response.totals.avg !== 'undefined' && (
+                              <p>Promedio: <span className="font-semibold">{response.totals.avg}</span></p>
                             )}
-                          </p>
-                          {typeof response.totals.avg !== 'undefined' && (
-                            <p>Promedio: <span className="font-semibold">{response.totals.avg}</span></p>
-                          )}
+                          </div>
                         </div>
-                      </div>
+                        {response.totals.subscales && Object.keys(response.totals.subscales).length > 0 && (
+                          <div className="mb-4 bg-gray-50 p-3 rounded border">
+                            <p className="text-gray-700 font-medium mb-2">Puntaje por subescala:</p>
+                            <ul className="list-disc pl-5 space-y-1 text-gray-800">
+                              {Object.entries(response.totals.subscales).map(([name, value]) => (
+                                <li key={String(name)}>
+                                  <span className="font-medium">{String(name)}:</span>{' '}
+                                  <span className="font-semibold">{String(value)}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </>
                     )}
                     <h5 className="text-gray-900 font-medium mb-3">Respuestas completas:</h5>
                     <div className="grid gap-3">
@@ -607,10 +622,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                             );
                           }
                           g.raw.forEach((answer, i) => {
+                            const lbl = (answer as any).label ?? String(answer.answer);
                             arr.push(
                               <div key={`raw-${baseId}-${i}`} className="bg-gray-50 p-4 rounded-lg border border-gray-300">
                                 <p className="text-gray-700 text-sm mb-2 font-medium">{getText(baseId)}</p>
-                                <span className="text-gray-900 font-medium">{String(answer.answer)}</span>
+                                <span className="text-gray-900 font-medium">{lbl}</span>
                               </div>
                             );
                           });
