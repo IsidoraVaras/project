@@ -53,7 +53,7 @@ export const CategorySurveys: React.FC<CategorySurveysProps> = ({
         const mappedSurveys: Survey[] = data.map((dbSurvey) => ({
           id: String(dbSurvey.id),
           title: dbSurvey.titulo,
-          description: dbSurvey.descripcion || 'Sin descripción.',
+          description: '',
           category: String(dbSurvey.id_categoria),
           questions: Array(Math.floor(Math.random() * 10) + 5).fill({} as Question),
           createdAt: new Date(),
@@ -145,12 +145,10 @@ export const CategorySurveys: React.FC<CategorySurveysProps> = ({
                     {completed && (
                       <span className="text-xs text-green-800 bg-green-100 px-2 py-1 rounded-full">Completada</span>
                     )}
-                    {survey.author && (
-                      <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">{survey.author}</span>
-                    )}
+                    {/* etiqueta autor removida */}
                   </div>
 
-                  <p className="text-gray-700 mb-4 leading-relaxed">{survey.description}</p>
+                  {/* descripción no visible */}
 
                   <div className="flex items-center space-x-6 text-sm text-gray-600">
                     <div className="flex items-center space-x-2">
