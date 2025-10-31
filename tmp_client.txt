@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ClipboardList, BarChart3, User } from 'lucide-react';
 import { Survey, SurveyResponse, User as UserType, Category } from '../types';
 import { CategoryGrid } from './CategoryGrid';
@@ -26,35 +26,20 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [categoriesRes, resultsRes, surveysRes] = await Promise.all([
+        const [categoriesRes, resultsRes] = await Promise.all([
           fetch('http://localhost:3001/api/categories'),
           fetch(`http://localhost:3001/api/users/${user.id}/results`),
-          fetch('http://localhost:3001/api/surveys'),
         ]);
 
-        if (!categoriesRes.ok) throw new Error('No se pudo obtener las categorías');
+        if (!categoriesRes.ok) throw new Error('No se pudo obtener las categor�as');
         if (!resultsRes.ok) throw new Error('No se pudo obtener tus resultados');
-        if (!surveysRes.ok) throw new Error('No se pudo obtener las encuestas');
 
         const categoriesData: Category[] = await categoriesRes.json();
         const resultsData: SurveyResponse[] = await resultsRes.json();
-        const surveysRaw = await surveysRes.json();
-
-        const mappedSurveys: Survey[] = (surveysRaw || []).map((s: any) => ({
-          id: String(s.id),
-          title: s.titulo,
-          description: s.descripcion || '',
-          category: String(s.id_categoria),
-          questions: [],
-          createdAt: new Date(),
-          isActive: true,
-          author: s.categoria_nombre || 'Admin',
-          estimatedTime: '5-15 min',
-        }));
 
         setCategories(categoriesData);
         setResponses(resultsData);
-        setSurveys(mappedSurveys);
+        setSurveys([]);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -69,9 +54,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
   }
 
   const userResponses = responses.filter(r => String(r.userId) === String(user.id));
-  const completedSurveyIds = Array.from(new Set(userResponses.map(r => String(r.surveyId))));
-  const totalActive = surveys.filter(s => s.isActive).length;
-  const availableLeft = Math.max(0, totalActive - completedSurveyIds.length);
+  const completedSurveyIds = userResponses.map(r => String(r.surveyId));
 
   const handleCategorySelect = (categoryId: string) => {
     const numericId = parseInt(categoryId, 10);
@@ -123,7 +106,6 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
           <CategoryGrid
             categories={categories}
             onCategorySelect={handleCategorySelect}
-            surveys={surveys.map(s => ({ id: s.id, category: s.category, isActive: s.isActive }))}
           />
         );
       case 'category-surveys':
@@ -199,11 +181,11 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Completadas</span>
-                  <span className="font-medium text-gray-900">{completedSurveyIds.length}</span>
+                  <span className="font-medium text-gray-900">{userResponses.length}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Disponibles</span>
-                  <span className="font-medium text-gray-900">{availableLeft}</span>
+                  <span className="font-medium text-gray-900">{surveys.length}</span>
                 </div>
               </div>
             </div>
@@ -215,3 +197,5 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
     </div>
   );
 };
+
+
