@@ -31,7 +31,8 @@ async function calculateScores(surveyId, answers) {
     .map(a => ({ qid: String(a.questionId), value: Number(a.answer) }))
     .filter(a => !Number.isNaN(a.value));
 
-  const total = numericAnswers.reduce((s, a) => s + a.value, 0);
+  // Default total (simple suma)
+  let total = numericAnswers.reduce((s, a) => s + a.value, 0);
 
   const subscales = {};
 
@@ -72,6 +73,24 @@ async function calculateScores(surveyId, answers) {
     }
   } catch {}
 
+  // Encuesta 2 (Rosenberg): recodificación inversa de ítems 3,5,8,9,10 (1..4 => 4..1)
+  // y total ajustado.
+  try {
+    if (Number(surveyId) === 2) {
+      const invertedIdx = new Set([3, 5, 8, 9, 10]);
+      const recodedTotal = numericAnswers.reduce((s, ans) => {
+        const baseId = ans.qid.split('|')[0];
+        const idx = orderMap.get(baseId) || 0;
+        if (invertedIdx.has(idx)) {
+          const rec = 5 - ans.value; // 1..4 -> 4..1
+          return s + rec;
+        }
+        return s + ans.value;
+      }, 0);
+      total = recodedTotal;
+    }
+  } catch {}
+
   return { total, subscales };
 }
 
@@ -87,6 +106,8 @@ const createResponse = async (req, res) => {
 
     const pool = await getConnection();
     const hasResultadoFK = await columnExists(pool, 'dbo', 'respuestas', 'id_resultado');
+    const hasTotalCol = await columnExists(pool, 'dbo', 'resultados', 'puntaje_total');
+    const hasResumenCol = await columnExists(pool, 'dbo', 'resultados', 'resumen_json');
 
     // Compute for returning to client (we do not persist totals now)
     const totals = await calculateScores(sid, answers);
@@ -102,6 +123,22 @@ const createResponse = async (req, res) => {
         .query(`INSERT INTO dbo.resultados (fecha, id_usuario, id_encuesta)
                 OUTPUT INSERTED.id VALUES (@fecha, @id_usuario, @id_encuesta)`);
       const resultadoId = ins.recordset[0].id;
+
+      // Actualizar puntaje_total y resumen_json si existen las columnas
+      try {
+        if (hasTotalCol) {
+          await reqTx
+            .input('rid_total', sql.Int, resultadoId)
+            .input('total', sql.Int, totals.total || 0)
+            .query('UPDATE dbo.resultados SET puntaje_total=@total WHERE id=@rid_total');
+        }
+        if (hasResumenCol) {
+          await reqTx
+            .input('rid_json', sql.Int, resultadoId)
+            .input('json', sql.NVarChar(sql.MAX), JSON.stringify(totals.subscales || {}))
+            .query('UPDATE dbo.resultados SET resumen_json=@json WHERE id=@rid_json');
+        }
+      } catch {}
 
       // Insert answers
       for (const a of answers) {
@@ -159,6 +196,41 @@ const createResponse = async (req, res) => {
         }
       }
 
+      // Recalcular totales desde las respuestas persistidas para asegurar consistencia
+      let totalsDb = totals;
+      try {
+        const rsAns = await new sql.Request(tx)
+          .input('rid_fetch', sql.Int, resultadoId)
+          .query(`SELECT r.respuesta, r.valor_numerico, r.id_pregunta, o.subescala
+                  FROM dbo.respuestas r
+                  LEFT JOIN dbo.opciones_respuesta o ON o.id = r.id_opcion_respuesta
+                  WHERE r.id_resultado=@rid_fetch ORDER BY r.id`);
+        const answersDb = rsAns.recordset.map(r => {
+          const baseId = String(r.id_pregunta);
+          const sub = r.subescala ? '|' + String(r.subescala) : '';
+          const qid = baseId + sub;
+          const val = (typeof r.valor_numerico === 'number' && !Number.isNaN(r.valor_numerico))
+            ? r.valor_numerico
+            : (isNaN(Number(r.respuesta)) ? r.respuesta : Number(r.respuesta));
+          return { questionId: qid, answer: val };
+        });
+        totalsDb = await calculateScores(sid, answersDb);
+
+        // Escribir nuevamente el total (y resumen) ya con los cálculos desde BD
+        if (hasTotalCol) {
+          await reqTx
+            .input('rid_total2', sql.Int, resultadoId)
+            .input('total2', sql.Int, totalsDb.total || 0)
+            .query('UPDATE dbo.resultados SET puntaje_total=@total2 WHERE id=@rid_total2');
+        }
+        if (hasResumenCol) {
+          await reqTx
+            .input('rid_json2', sql.Int, resultadoId)
+            .input('json2', sql.NVarChar(sql.MAX), JSON.stringify(totalsDb.subscales || {}))
+            .query('UPDATE dbo.resultados SET resumen_json=@json2 WHERE id=@rid_json2');
+        }
+      } catch {}
+
       await tx.commit();
 
       const payload = {
@@ -166,7 +238,7 @@ const createResponse = async (req, res) => {
         surveyId: String(surveyId),
         userId: String(userId),
         answers,
-        totals,
+        totals: totalsDb,
         completedAt: new Date().toISOString(),
       };
       return res.status(201).json(payload);
@@ -189,7 +261,7 @@ const getResponses = async (_req, res) => {
 
     const rs = await pool.request().query('SELECT id, fecha, id_usuario, id_encuesta FROM dbo.resultados ORDER BY fecha DESC');
     const list = [];
-    for (const row of rs.recordset) {
+  for (const row of rs.recordset) {
       let answers = [];
       if (hasResultadoFK) {
         const a = await pool
@@ -219,6 +291,15 @@ const getResponses = async (_req, res) => {
       }
 
       const totals = await calculateScores(row.id_encuesta, answers);
+
+      // Clasificación para Rosenberg (encuesta 2)
+      if (Number(row.id_encuesta) === 2) {
+        const t = totals.total || 0;
+        let cls = 'Autoestima moderada (normal)';
+        if (t <= 25) cls = 'Baja autoestima';
+        else if (t >= 36) cls = 'Alta autoestima';
+        totals.classification = cls;
+      }
 
       list.push({
         id: String(row.id),
