@@ -50,31 +50,19 @@ export const CategorySurveys: React.FC<CategorySurveysProps> = ({
 
         const data: DBSurvey[] = await response.json();
 
-        // Mapear encuestas y obtener el conteo real de preguntas desde el backend
-        const baseSurveys: Survey[] = data.map((dbSurvey) => ({
+        const mappedSurveys: Survey[] = data.map((dbSurvey) => ({
           id: String(dbSurvey.id),
           title: dbSurvey.titulo,
           description: '',
           category: String(dbSurvey.id_categoria),
-          questions: [],
+          questions: Array(Math.floor(Math.random() * 10) + 5).fill({} as Question),
           createdAt: new Date(),
           isActive: true,
+          estimatedTime: '5-15 min',
+          author: 'Admin',
         }));
 
-        const withCounts: Survey[] = await Promise.all(
-          baseSurveys.map(async (s) => {
-            try {
-              const qRes = await fetch(`http://localhost:3001/api/surveys/${s.id}/questions`);
-              const qData: any[] = qRes.ok ? await qRes.json() : [];
-              const count = Array.isArray(qData) ? qData.length : 0;
-              return { ...s, questions: new Array(count).fill({} as Question) };
-            } catch {
-              return { ...s, questions: [] };
-            }
-          })
-        );
-
-        setSurveys(withCounts);
+        setSurveys(mappedSurveys);
         setError(null);
       } catch (err: any) {
         console.error('Error al obtener las encuestas:', err);
@@ -188,4 +176,5 @@ export const CategorySurveys: React.FC<CategorySurveysProps> = ({
     </div>
   );
 };
+
 
