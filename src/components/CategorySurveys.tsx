@@ -1,7 +1,7 @@
 // src/components/CategorySurveys.tsx
 
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Clock, User, ChevronRight, Loader2 } from 'lucide-react';
+import { ArrowLeft, User, ChevronRight, Loader2 } from 'lucide-react';
 import { Survey, Question } from '../types';
 
 // 1. Interfaz de datos esperados del Backend (basado en dbo.encuestas)
@@ -153,10 +153,6 @@ export const CategorySurveys: React.FC<CategorySurveysProps> = ({
                   <p className="text-gray-700 mb-4 leading-relaxed">{survey.description}</p>
 
                   <div className="flex items-center space-x-6 text-sm text-gray-600">
-                    <div className="flex items-center space-x-2">
-                      <Clock className="h-4 w-4" />
-                      <span>{survey.estimatedTime || '10-15 min'}</span>
-                    </div>
                     <div className="flex items-center space-x-2">
                       <User className="h-4 w-4" />
                       <span>{survey.questions.length} preguntas</span>
