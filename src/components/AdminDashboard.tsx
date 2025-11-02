@@ -16,6 +16,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const [clients, setClients] = useState<User[]>([]);
   const [admins, setAdmins] = useState<User[]>([]);
   const [adminQuery, setAdminQuery] = useState('');
+  const [participantQuery, setParticipantQuery] = useState('');
   // Modal de confirmación de eliminación
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; user: User | null; loading: boolean; error?: string }>({ open: false, user: null, loading: false });
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
@@ -141,9 +142,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       </div>
 
       <div className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm">
-        <h3 className="text-xl font-bold text-gray-900 mb-6">Participantes y sus Encuestas</h3>
+        <h3 className="text-xl font-bold text-gray-900 mb-4">Participantes y sus Encuestas</h3>
+        <div className="mb-4">
+          <input
+            type="text"
+            value={participantQuery}
+            onChange={(e) => setParticipantQuery(e.target.value)}
+            placeholder="Buscar por nombre, apellido o correo"
+            className="w-full max-w-xl rounded-lg border border-gray-300 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
+          />
+        </div>
         <div className="space-y-4">
-          {clients.filter(c => getResponsesForUser(c.id).length > 0).map((client) => {
+          {clients
+            .filter(c => getResponsesForUser(c.id).length > 0)
+            .filter(c => {
+              const q = participantQuery.trim().toLowerCase();
+              if (!q) return true;
+              return [c.nombre, c.apellido, c.email].some(s => String(s).toLowerCase().includes(q));
+            })
+            .map((client) => {
             const userResponses = getResponsesForUser(client.id);
             return (
               <div key={client.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-300">
@@ -170,6 +187,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
               </div>
             );
           })}
+          {participantQuery.trim() &&
+            clients.filter(c => getResponsesForUser(c.id).length > 0).every(c => {
+              const q = participantQuery.trim().toLowerCase();
+              return ![c.nombre, c.apellido, c.email].some(s => String(s).toLowerCase().includes(q));
+            }) && (
+              <div className="text-center py-8 text-gray-600">Sin resultados para la búsqueda.</div>
+          )}
         </div>
       </div>
     </div>
@@ -257,7 +281,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             value={adminQuery}
             onChange={(e) => setAdminQuery(e.target.value)}
             placeholder="Buscar por nombre, apellido o correo"
-            className="w-full max-w-xl rounded-lg border-2 border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
+            className="w-full max-w-xl rounded-lg border border-gray-300 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
           />
           {q && (
             <p className="text-sm text-gray-600 mt-2">Coincidencias: {filtered.length}</p>
@@ -414,7 +438,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 type="text"
                 value={adminForm.nombre}
                 onChange={(e) => setAdminForm((f) => ({ ...f, nombre: e.target.value }))}
-                className="w-full rounded-lg border-2 border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
+                className="w-full rounded-lg border border-gray-300 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
                 required
               />
             </div>
@@ -424,7 +448,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 type="text"
                 value={adminForm.apellido}
                 onChange={(e) => setAdminForm((f) => ({ ...f, apellido: e.target.value }))}
-                className="w-full rounded-lg border-2 border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
+                className="w-full rounded-lg border border-gray-300 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
                 required
               />
             </div>
@@ -436,7 +460,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
               type="email"
               value={adminForm.email}
               onChange={(e) => setAdminForm((f) => ({ ...f, email: e.target.value }))}
-              className="w-full rounded-lg border-2 border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
+              className="w-full rounded-lg border border-gray-300 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 outline-none"
               required
             />
           </div>
@@ -448,7 +472,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 type={showAdminPassword ? 'text' : 'password'}
                 value={adminForm.password}
                 onChange={(e) => setAdminForm((f) => ({ ...f, password: e.target.value }))}
-                className="w-full rounded-lg border-2 border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 pr-10 outline-none"
+                className="w-full rounded-lg border border-gray-300 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 px-3 py-2 pr-10 outline-none"
                 placeholder="••••••••"
                 required
               />
