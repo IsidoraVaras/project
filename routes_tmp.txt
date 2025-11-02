@@ -8,8 +8,7 @@ import {
   getQuestionsBySurvey,
   getAllSurveys,
 } from '../controllers/surveyController.js';
-import { getResponses, createResponse, getResultsByUser } from '../controllers/responseController.js';
-import { exportResultPdf } from '../controllers/resultExportController.js';
+import { getResponses, createResponse, getResultsByUser, exportResultTxt } from '../controllers/responseController.js';
 
 const router = express.Router();
 
@@ -31,6 +30,7 @@ router.get('/surveys', getAllSurveys);
 router.get('/responses', getResponses);
 router.post('/responses', createResponse);
 router.get('/users/:id/results', getResultsByUser);
-router.get('/results/:id/export.pdf', exportResultPdf);
+router.get('/results/:id/export', exportResultTxt);
 
 export default router;
+

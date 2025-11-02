@@ -563,6 +563,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                         minute: '2-digit'
                       })}
                     </p>
+                    <div className="mt-3">
+                      <a
+                        href={`http://localhost:3001/api/results/${response.id}/export.pdf`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block px-3 py-1 text-sm bg-orange-600 text-white rounded hover:bg-orange-700"
+                      >
+                        Descargar PDF
+                      </a>
+                    </div>
                   </div>
 
                   <div className="border-t border-gray-300 pt-4">
