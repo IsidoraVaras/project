@@ -1,0 +1,170 @@
+  const renderUserDetail = () => {
+    const user = clients.find(u => u.id === selectedUserId);
+    const userResponses = getResponsesForUser(selectedUserId);
+
+    if (!user) return null;
+
+    return (
+      <div>
+        <div className="flex items-center mb-8">
+          <button
+            onClick={() => setCurrentView('overview')}
+            className="flex items-center text-gray-600 hover:text-gray-900 mr-6 transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5 mr-2" />
+            Volver al panel
+          </button>
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Detalles de {user.nombre} {user.apellido}</h2>
+            <p className="text-gray-700 text-lg">{user.email}</p>
+          </div>
+        </div>
+
+        <div className="mb-6 bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm">
+          <h3 className="text-lg font-bold text-gray-900 mb-4">Resumen de Participación</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm text-gray-600">Encuestas Completadas</p>
+              <p className="text-2xl font-bold text-gray-900">{userResponses.length}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Última Actividad</p>
+              <p className="text-sm text-gray-900">
+                {userResponses.length > 0 
+                  ? new Date(Math.max(...userResponses.map(r => new Date(r.completedAt).getTime()))).toLocaleDateString('es-ES')
+                  : 'Sin actividad'
+                }
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <h3 className="text-xl font-bold text-gray-900">Encuestas Completadas</h3>
+          
+          {userResponses.length === 0 ? (
+            <div className="text-center py-12 bg-white border-2 border-gray-300 rounded-xl">
+              <ClipboardList className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600">Este usuario no ha completado ninguna encuesta aún.</p>
+            </div>
+          ) : (
+            userResponses.map((response) => {
+              const survey = surveys.find(s => s.id === response.surveyId);
+              
+              return (
+                <div key={response.id} className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm">
+                  <div className="mb-4">
+                    <h4 className="text-lg font-bold text-gray-900">{survey?.title}</h4>
+                    <p className="text-gray-600">{survey?.description}</p>
+                    <p className="text-sm text-gray-600 mt-1">Categoría: {survey?.author || survey?.category}</p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Completada el {new Date(response.completedAt).toLocaleDateString('es-ES', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                    <div className="mt-3">
+                      <a
+                        href={`http://localhost:3001/api/results/${response.id}/export.pdf`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block px-3 py-1 text-sm bg-orange-600 text-white rounded hover:bg-orange-700"
+                      >
+                        Descargar PDF
+                      </a>
+                      <button
+                        onClick={() => {
+                          setSelectedResponseId(response.id);
+                          setCurrentView('response-detail');
+                        }}
+                        className="inline-block ml-2 px-3 py-1 text-sm bg-orange-50 text-orange-700 border border-orange-200 rounded hover:bg-orange-100"
+                      >
+                        Ver respuestas
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Oculto para simplificar vista. Se muestran en 'response-detail'. */}
+                  {false && (
+                  <div className="border-t border-gray-300 pt-4">
+                    {response.totals && (
+                      <>
+                        <div className="mb-4 bg-gray-50 p-3 rounded border">
+                          <div className="text-gray-800">
+                            <p>
+                              Puntaje total: <span className="font-semibold">{response.totals.total}</span>
+                              {response.totals.classification && (
+                                <span className="ml-2">({response.totals.classification})</span>
+                              )}
+                            </p>
+                            {typeof response.totals.avg !== 'undefined' && (
+                              <p>Promedio: <span className="font-semibold">{response.totals.avg}</span></p>
+                            )}
+                          </div>
+                        </div>
+                        {response.totals.subscales && Object.keys(response.totals.subscales).length > 0 && (
+                          <div className="mb-4 bg-gray-50 p-3 rounded border">
+                            <p className="text-gray-700 font-medium mb-2">Puntaje por subescala:</p>
+                            <ul className="list-disc pl-5 space-y-1 text-gray-800">
+                              {Object.entries(response.totals.subscales).map(([name, value]) => (
+                                <li key={String(name)}>
+                                  <span className="font-medium">{String(name)}:</span>{' '}
+                                  <span className="font-semibold">{String(value)}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    <h5 className="text-gray-900 font-medium mb-3">Respuestas completas:</h5>
+                    <div className="grid gap-3">
+                      {(() => {
+                        const groups: Record<string, { miedo?: any; evitacion?: any; raw: any[] }> = {};
+                        for (const a of response.answers) {
+                          const [base, sub] = String(a.questionId).split('|');
+                          if (!groups[base]) groups[base] = { raw: [] };
+                          if (sub === 'miedo') groups[base].miedo = a.answer;
+                          else if (sub === 'evitacion') groups[base].evitacion = a.answer;
+                          else groups[base].raw.push(a);
+                        }
+                        const items = Object.entries(groups);
+                        const arr: JSX.Element[] = [];
+                        const qArr = surveyQuestions[String(response.surveyId)] || [];
+                        const getText = (baseId: string) => qArr.find(q => q.id === baseId)?.text || `Ítem ${baseId}`;
+
+                        items.forEach(([baseId, g], index) => {
+                          if (g.miedo !== undefined || g.evitacion !== undefined) {
+                            arr.push(
+                              <div key={`lsas-${baseId}-${index}`} className="bg-gray-50 p-4 rounded-lg border border-gray-300">
+                                <p className="text-gray-700 text-sm mb-2 font-medium">{getText(baseId)}</p>
+                                <p className="text-gray-900 font-medium">Miedo/ansiedad: {String(g.miedo ?? '-') } | Evitación: {String(g.evitacion ?? '-')}</p>
+                              </div>
+                            );
+                          }
+                          g.raw.forEach((answer, i) => {
+                            const lbl = (answer as any).label ?? String(answer.answer);
+                            arr.push(
+                              <div key={`raw-${baseId}-${i}`} className="bg-gray-50 p-4 rounded-lg border border-gray-300">
+                                <p className="text-gray-700 text-sm mb-2 font-medium">{getText(baseId)}</p>
+                                <span className="text-gray-900 font-medium">{lbl}</span>
+                              </div>
+                            );
+                          });
+                        });
+                        return arr;
+                      })()}
+                    </div>
+                  </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  };

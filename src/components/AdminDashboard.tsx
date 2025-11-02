@@ -7,11 +7,12 @@ interface AdminDashboardProps {
   user: User;
 }
 
-type View = 'overview' | 'responses' | 'user-detail' | 'create-admin' | 'manage-admins';
+type View = 'overview' | 'responses' | 'user-detail' | 'response-detail' | 'create-admin' | 'manage-admins';
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const [currentView, setCurrentView] = useState<View>('overview');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [selectedResponseId, setSelectedResponseId] = useState<string>('');
   const [clients, setClients] = useState<User[]>([]);
   const [admins, setAdmins] = useState<User[]>([]);
   const [adminQuery, setAdminQuery] = useState('');
@@ -69,7 +70,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   // Cargar textos de preguntas para el usuario seleccionado (muestra en detalle)
   useEffect(() => {
     const loadQuestions = async () => {
-      if (currentView !== 'user-detail' || !selectedUserId) return;
+      if ((currentView !== 'user-detail' && currentView !== 'response-detail') || !selectedUserId) return;
       const userResponses = responses.filter(r => String(r.userId) === String(selectedUserId));
       const surveyIds = Array.from(new Set(userResponses.map(r => String(r.surveyId))));
       const entries = await Promise.all(
@@ -203,7 +204,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 <button
                   onClick={() => {
                     setSelectedUserId(response.userId);
-                    setCurrentView('user-detail');
+                    setSelectedResponseId(response.id);
+                    setCurrentView('response-detail');
                   }}
                   className="flex items-center space-x-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors"
                 >
@@ -572,79 +574,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                       >
                         Descargar PDF
                       </a>
+                      <button
+                        onClick={() => {
+                          setSelectedResponseId(response.id);
+                          setCurrentView('response-detail');
+                        }}
+                        className="inline-block ml-2 px-3 py-1 text-sm bg-orange-50 text-orange-700 border border-orange-200 rounded hover:bg-orange-100"
+                      >
+                        Ver respuestas
+                      </button>
                     </div>
                   </div>
 
-                  <div className="border-t border-gray-300 pt-4">
-                    {response.totals && (
-                      <>
-                        <div className="mb-4 bg-gray-50 p-3 rounded border">
-                          <div className="text-gray-800">
-                            <p>
-                              Puntaje total: <span className="font-semibold">{response.totals.total}</span>
-                              {response.totals.classification && (
-                                <span className="ml-2">({response.totals.classification})</span>
-                              )}
-                            </p>
-                            {typeof response.totals.avg !== 'undefined' && (
-                              <p>Promedio: <span className="font-semibold">{response.totals.avg}</span></p>
-                            )}
-                          </div>
-                        </div>
-                        {response.totals.subscales && Object.keys(response.totals.subscales).length > 0 && (
-                          <div className="mb-4 bg-gray-50 p-3 rounded border">
-                            <p className="text-gray-700 font-medium mb-2">Puntaje por subescala:</p>
-                            <ul className="list-disc pl-5 space-y-1 text-gray-800">
-                              {Object.entries(response.totals.subscales).map(([name, value]) => (
-                                <li key={String(name)}>
-                                  <span className="font-medium">{String(name)}:</span>{' '}
-                                  <span className="font-semibold">{String(value)}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </>
-                    )}
-                    <h5 className="text-gray-900 font-medium mb-3">Respuestas completas:</h5>
-                    <div className="grid gap-3">
-                      {(() => {
-                        const groups: Record<string, { miedo?: any; evitacion?: any; raw: any[] }> = {};
-                        for (const a of response.answers) {
-                          const [base, sub] = String(a.questionId).split('|');
-                          if (!groups[base]) groups[base] = { raw: [] };
-                          if (sub === 'miedo') groups[base].miedo = a.answer;
-                          else if (sub === 'evitacion') groups[base].evitacion = a.answer;
-                          else groups[base].raw.push(a);
-                        }
-                        const items = Object.entries(groups);
-                        const arr: JSX.Element[] = [];
-                        const qArr = surveyQuestions[String(response.surveyId)] || [];
-                        const getText = (baseId: string) => qArr.find(q => q.id === baseId)?.text || `Ítem ${baseId}`;
-
-                        items.forEach(([baseId, g], index) => {
-                          if (g.miedo !== undefined || g.evitacion !== undefined) {
-                            arr.push(
-                              <div key={`lsas-${baseId}-${index}`} className="bg-gray-50 p-4 rounded-lg border border-gray-300">
-                                <p className="text-gray-700 text-sm mb-2 font-medium">{getText(baseId)}</p>
-                                <p className="text-gray-900 font-medium">Miedo/ansiedad: {String(g.miedo ?? '-') } | Evitación: {String(g.evitacion ?? '-')}</p>
-                              </div>
-                            );
-                          }
-                          g.raw.forEach((answer, i) => {
-                            const lbl = (answer as any).label ?? String(answer.answer);
-                            arr.push(
-                              <div key={`raw-${baseId}-${i}`} className="bg-gray-50 p-4 rounded-lg border border-gray-300">
-                                <p className="text-gray-700 text-sm mb-2 font-medium">{getText(baseId)}</p>
-                                <span className="text-gray-900 font-medium">{lbl}</span>
-                              </div>
-                            );
-                          });
-                        });
-                        return arr;
-                      })()}
-                    </div>
-                  </div>
+                  {/* Contenido detallado removido aquí (se muestra en 'response-detail') */}
                 </div>
               );
             })
@@ -662,6 +604,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         return renderResponses();
       case 'user-detail':
         return renderUserDetail();
+      case 'response-detail':
+        return renderResponseDetail();
       case 'manage-admins':
         return renderManageAdmins();
       case 'create-admin':
@@ -669,6 +613,122 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       default:
         return renderOverview();
     }
+  };
+
+  const renderResponseDetail = () => {
+    if (!selectedResponseId) return null;
+    const response = responses.find(r => String(r.id) === String(selectedResponseId));
+    if (!response) return null;
+    const survey = surveys.find(s => String(s.id) === String(response.surveyId));
+    const usr = clients.find(u => String(u.id) === String(response.userId));
+
+    const qArr = surveyQuestions[String(response.surveyId)] || [];
+    const getText = (baseId: string) => qArr.find(q => q.id === baseId)?.text || `Ítem ${baseId}`;
+
+    return (
+      <div>
+        <div className="flex items-center mb-8">
+          <button
+            onClick={() => setCurrentView('user-detail')}
+            className="flex items-center text-gray-600 hover:text-gray-900 mr-6 transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5 mr-2" />
+            Volver a usuario
+          </button>
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">{survey?.title}</h2>
+            <p className="text-gray-700 text-lg">{usr?.nombre} {usr?.apellido} • {usr?.email}</p>
+          </div>
+        </div>
+
+        <div className="bg-white border-2 border-gray-300 rounded-xl p-6 shadow-sm">
+          <div className="mb-4">
+            <p className="text-gray-600">{survey?.description}</p>
+            <p className="text-sm text-gray-600 mt-1">Categoría: {survey?.author || survey?.category}</p>
+            <p className="text-sm text-gray-500 mt-2">
+              Completada el {new Date(response.completedAt).toLocaleDateString('es-ES', {
+                year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+              })}
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <a
+                href={`http://localhost:3001/api/results/${response.id}/export.pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1 text-sm bg-orange-600 text-white rounded hover:bg-orange-700"
+              >Descargar PDF</a>
+            </div>
+          </div>
+
+          {response.totals && (
+            <>
+              <div className="mb-4 bg-gray-50 p-3 rounded border">
+                <div className="text-gray-800">
+                  <p>
+                    Puntaje total: <span className="font-semibold">{response.totals?.total}</span>
+                    {response.totals?.classification && (
+                      <span className="ml-2">({response.totals?.classification})</span>
+                    )}
+                  </p>
+                  {typeof response.totals?.avg !== 'undefined' && (
+                    <p>Promedio: <span className="font-semibold">{response.totals?.avg}</span></p>
+                  )}
+                </div>
+              </div>
+              {Object.keys(response.totals?.subscales ?? {}).length > 0 && (
+                <div className="mb-4 bg-gray-50 p-3 rounded border">
+                  <p className="text-gray-700 font-medium mb-2">Puntaje por subescala:</p>
+                  <ul className="list-disc pl-5 space-y-1 text-gray-800">
+                    {Object.entries(response.totals?.subscales ?? {}).map(([name, value]) => (
+                      <li key={String(name)}>
+                        <span className="font-medium">{String(name)}:</span>{' '}
+                        <span className="font-semibold">{String(value)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+
+          <h5 className="text-gray-900 font-medium mb-3">Respuestas completas</h5>
+          <div className="grid gap-3">
+            {(() => {
+              const groups: Record<string, { miedo?: any; evitacion?: any; raw: any[] }> = {};
+              for (const a of response.answers) {
+                const [base, sub] = String(a.questionId).split('|');
+                if (!groups[base]) groups[base] = { raw: [] };
+                if (sub === 'miedo') groups[base].miedo = a.answer;
+                else if (sub === 'evitacion') groups[base].evitacion = a.answer;
+                else groups[base].raw.push(a);
+              }
+              const items = Object.entries(groups);
+              const arr: JSX.Element[] = [];
+              items.forEach(([baseId, g], index) => {
+                if (g.miedo !== undefined || g.evitacion !== undefined) {
+                  arr.push(
+                    <div key={`lsas-${baseId}-${index}`} className="bg-gray-50 p-4 rounded-lg border border-gray-300">
+                      <p className="text-gray-700 text-sm mb-2 font-medium">{getText(baseId)}</p>
+                      <p className="text-gray-900 font-medium">Miedo/ansiedad: {String(g.miedo ?? '-') } | Evitación: {String(g.evitacion ?? '-')}</p>
+                    </div>
+                  );
+                }
+                g.raw.forEach((answer, i) => {
+                  const lbl = (answer as any).label ?? String(answer.answer);
+                  arr.push(
+                    <div key={`raw-${baseId}-${i}`} className="bg-gray-50 p-4 rounded-lg border border-gray-300">
+                      <p className="text-gray-700 text-sm mb-2 font-medium">{getText(baseId)}</p>
+                      <span className="text-gray-900 font-medium">{lbl}</span>
+                    </div>
+                  );
+                });
+              });
+              return arr;
+            })()}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -682,7 +742,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 <button
                   onClick={() => setCurrentView('overview')}
                   className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${
-                    currentView === 'overview' || currentView === 'user-detail'
+                    currentView === 'overview' || currentView === 'user-detail' || currentView === 'response-detail'
                       ? 'bg-orange-600 text-white'
                       : 'text-gray-800 hover:bg-gray-100'
                   }`}
