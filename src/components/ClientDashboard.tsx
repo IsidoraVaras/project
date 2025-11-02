@@ -15,13 +15,40 @@ interface ClientDashboardProps {
 type View = 'categories' | 'category-surveys' | 'survey-form' | 'results' | 'profile';
 
 export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdateProfile }) => {
-  const [currentView, setCurrentView] = useState<View>('categories');
-  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+  const [currentView, setCurrentView] = useState<View>(() => {
+    try { return (localStorage.getItem('client.view') as View) || 'categories'; } catch { return 'categories'; }
+  });
+  const [selectedCategory, setSelectedCategory] = useState<number | null>(() => {
+    try {
+      const v = localStorage.getItem('client.selectedCategory');
+      return v ? parseInt(v, 10) : null;
+    } catch { return null; }
+  });
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
+  const [selectedSurveyId, setSelectedSurveyId] = useState<string>(() => {
+    try { return localStorage.getItem('client.selectedSurveyId') || ''; } catch { return ''; }
+  });
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Persist state to localStorage
+  useEffect(() => {
+    try { localStorage.setItem('client.view', currentView); } catch {}
+  }, [currentView]);
+  useEffect(() => {
+    try {
+      if (selectedCategory !== null) localStorage.setItem('client.selectedCategory', String(selectedCategory));
+      else localStorage.removeItem('client.selectedCategory');
+    } catch {}
+  }, [selectedCategory]);
+  useEffect(() => {
+    try {
+      const id = selectedSurvey ? selectedSurvey.id : selectedSurveyId || '';
+      localStorage.setItem('client.selectedSurveyId', id);
+    } catch {}
+  }, [selectedSurvey, selectedSurveyId]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -64,6 +91,24 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
     fetchData();
   }, [user.id]);
 
+  // Rehydrate selected survey when surveys finish loading
+  useEffect(() => {
+    if (!selectedSurvey && selectedSurveyId && surveys.length > 0) {
+      const found = surveys.find(s => String(s.id) === String(selectedSurveyId));
+      if (found) setSelectedSurvey(found);
+    }
+  }, [selectedSurveyId, surveys]);
+
+  // Guard inconsistent states
+  useEffect(() => {
+    if (currentView === 'category-surveys' && selectedCategory === null) {
+      setCurrentView('categories');
+    }
+    if (currentView === 'survey-form' && !selectedSurveyId && !selectedSurvey) {
+      setCurrentView('category-surveys');
+    }
+  }, [currentView, selectedCategory, selectedSurvey, selectedSurveyId]);
+
   if (loading) {
     return <div className="text-center py-12 text-gray-700">Cargando datos...</div>;
   }
@@ -87,6 +132,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
       return;
     }
     setSelectedSurvey(survey);
+    setSelectedSurveyId(String(survey.id));
     setCurrentView('survey-form');
   };
 

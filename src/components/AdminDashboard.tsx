@@ -10,9 +10,21 @@ interface AdminDashboardProps {
 type View = 'overview' | 'responses' | 'user-detail' | 'response-detail' | 'create-admin' | 'manage-admins';
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
-  const [currentView, setCurrentView] = useState<View>('overview');
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
-  const [selectedResponseId, setSelectedResponseId] = useState<string>('');
+  const [currentView, setCurrentView] = useState<View>(() => {
+    try {
+      const v = localStorage.getItem('admin.view') as View | null;
+      const allowed: View[] = ['overview', 'responses', 'user-detail', 'response-detail', 'create-admin', 'manage-admins'];
+      return v && allowed.includes(v) ? v : 'overview';
+    } catch {
+      return 'overview';
+    }
+  });
+  const [selectedUserId, setSelectedUserId] = useState<string>(() => {
+    try { return localStorage.getItem('admin.selectedUserId') || ''; } catch { return ''; }
+  });
+  const [selectedResponseId, setSelectedResponseId] = useState<string>(() => {
+    try { return localStorage.getItem('admin.selectedResponseId') || ''; } catch { return ''; }
+  });
   const [clients, setClients] = useState<User[]>([]);
   const [admins, setAdmins] = useState<User[]>([]);
   const [adminQuery, setAdminQuery] = useState('');
@@ -28,6 +40,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [creatingAdmin, setCreatingAdmin] = useState(false);
   const [createAdminMsg, setCreateAdminMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Persistencia de vista y selecciones entre recargas
+  useEffect(() => {
+    try { localStorage.setItem('admin.view', currentView); } catch {}
+  }, [currentView]);
+  useEffect(() => {
+    try { localStorage.setItem('admin.selectedUserId', selectedUserId || ''); } catch {}
+  }, [selectedUserId]);
+  useEffect(() => {
+    try { localStorage.setItem('admin.selectedResponseId', selectedResponseId || ''); } catch {}
+  }, [selectedResponseId]);
+
+  // Si hay inconsistencia (detalle sin selección), volver a overview
+  useEffect(() => {
+    if ((currentView === 'user-detail' || currentView === 'response-detail') && !selectedUserId) {
+      setCurrentView('overview');
+    }
+    if (currentView === 'response-detail' && !selectedResponseId) {
+      setCurrentView('user-detail');
+    }
+  }, [currentView, selectedUserId, selectedResponseId]);
 
   useEffect(() => {
     const fetchData = async () => {
