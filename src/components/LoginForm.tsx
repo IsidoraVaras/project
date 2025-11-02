@@ -34,10 +34,14 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
       }
 
       if (!success) {
-        setError(isLogin ? 'Credenciales inválidas' : 'Error al registrar usuario');
+        setError('Este correo ya se encuentra registrado.');
       }
-    } catch (err) {
-      setError('Ha ocurrido un error. Inténtalo de nuevo.');
+    } catch (err: any) {
+        if (err.message?.toLowerCase().includes('correo') || err.message?.toLowerCase().includes('email')){
+            setError('Este correo ya se encuentra registrado.');
+        } else {
+            setError('Ha ocurrido un error. Inténtalo de nuevo');
+        }
     } finally {
       setLoading(false);
     }
@@ -60,7 +64,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
             className="flex items-center text-gray-600 hover:text-gray-900 mb-6 transition-colors"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Volver al inicio
           </button>
 
           <div className="text-center mb-8">
@@ -68,7 +71,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
               {isLogin ? 'Iniciar Sesión' : 'Crear Cuenta'}
             </h2>
             <p className="text-gray-700">
-              {isLogin ? 'Ingresa a tu cuenta' : 'Regístrate para comenzar'}
+              {isLogin ? 'Ingresa tus credenciales para acceder al portal' : 'Regístrate para comenzar'}
             </p>
           </div>
 
