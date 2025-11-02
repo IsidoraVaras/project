@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3, Users, CheckCircle, TrendingUp } from 'lucide-react';
+import { BarChart3, Users, TrendingUp } from 'lucide-react';
 import logoudla from '../assets/logoudla.png';
 import logocipaes from '../assets/LogoCIPAES.png';
 
@@ -53,20 +53,12 @@ export const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
             ¿Por qué elegir nuestra plataforma?
           </h2>
           
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-center max-w-4xl mx-auto">
             <div className="bg-white border border-gray-300 rounded-xl p-6 hover:border-orange-500/50 hover:shadow-lg transition-all duration-300">
               <Users className="h-10 w-10 text-orange-500 mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-3">Fácil de Usar</h3>
               <p className="text-gray-700">
                 Encuestas claras y directas, listas para responder en pocos minutos.
-              </p>
-            </div>
-
-            <div className="bg-white border border-gray-300 rounded-xl p-6 hover:border-orange-500/50 hover:shadow-lg transition-all duration-300">
-              <CheckCircle className="h-10 w-10 text-orange-500 mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Acceso desde cualquier lugar</h3>
-              <p className="text-gray-700">
-                Ingresa desde tu computadora, tablet o celular sin complicaciones.
               </p>
             </div>
 
