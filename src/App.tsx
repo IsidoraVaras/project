@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { Header } from './components/Header';
 import { HomePage } from './components/HomePage';
@@ -10,7 +10,26 @@ type View = 'home' | 'login' | 'dashboard';
 
 function App() {
   const { currentUser, loading, login, register, logout, updateProfile } = useAuth();
-  const [currentView, setCurrentView] = useState<View>(currentUser ? 'dashboard' : 'home');
+const [currentView, setCurrentView] = useState<View>(() => {
+  try {
+    const v = localStorage.getItem('app.view') as View | null;
+    return v ?? 'home';
+  } catch {
+    return 'home';
+  }
+});
+
+// Persist view across reloads
+useEffect(() => {
+  try { localStorage.setItem('app.view', currentView); } catch {}
+}, [currentView]);
+
+// Guard: if reloaded on dashboard without session, go to login
+useEffect(() => {
+  if (!loading && !currentUser && currentView === 'dashboard') {
+    setCurrentView('login');
+  }
+}, [loading, currentUser]);
 
   if (loading) {
     return (
