@@ -1,6 +1,7 @@
-ï»¿// backend/controllers/responseController.js
+// backend/controllers/responseController.js
 import { getConnection } from '../db.js';
 import sql from 'mssql';
+// PDF export uses optional dependency loaded dynamically to avoid startup errors
 
 // Check if a column exists in a table
 async function columnExists(pool, schema, table, column) {
@@ -73,7 +74,7 @@ async function calculateScores(surveyId, answers) {
     }
   } catch {}
 
-  // Encuesta 2 (Rosenberg): recodificaciÃ³n inversa de Ã­tems 3,5,8,9,10 (1..4 => 4..1)
+  // Encuesta 2 (Rosenberg): recodificación inversa de ítems 3,5,8,9,10 (1..4 => 4..1)
   // y total ajustado.
   try {
     if (Number(surveyId) === 2) {
@@ -98,32 +99,32 @@ async function calculateScores(surveyId, answers) {
       const avg = count > 0 ? (numericAnswers.reduce((s, a) => s + a.value, 0) / count) : 0;
       // Guardar como total el promedio, con dos decimales
       total = Math.round(avg * 100) / 100;
-      // ClasificaciÃ³n segÃºn Zimet et al. (1988)
+      // Clasificación según Zimet et al. (1988)
       let cls = undefined;
       if (avg >= 1.0 && avg <= 2.9) cls = 'Bajo apoyo percibido';
       else if (avg >= 3.0 && avg <= 5.0) cls = 'Apoyo moderado';
       else if (avg >= 5.1 && avg <= 7.0) cls = 'Alto apoyo percibido';
-      // Devolver tambiÃ©n avg explÃ­cito
+      // Devolver también avg explícito
       return { total, subscales, avg: Math.round(avg * 100) / 100, classification: cls };
     }
   } catch {}
 
-  // Encuesta 6 (FLCAS): clasificaciÃ³n por rangos del total
+  // Encuesta 6 (FLCAS): clasificación por rangos del total
   try {
     if (Number(surveyId) === 6) {
       const t = total || 0;
-      let lvl = 'Baja'; // 33â€“69
+      let lvl = 'Baja'; // 33–69
       if (t >= 90) lvl = 'Alta';
       else if (t >= 70) lvl = 'Moderada';
       return { total, subscales, classification: 'Ansiedad ' + lvl };
     }
   } catch {}
 
-  // Encuesta 7: TamaÃ±o del vocabulario (VST)
+  // Encuesta 7: Tamaño del vocabulario (VST)
   // Total = respuestas correctas x 100 (familias de palabras)
-  // InterpretaciÃ³n (familias):
-  // 2000â€“3000: BÃ¡sico; 5000â€“6000: Lectura no especializada;
-  // 8000â€“9000: Alto; 10000+: Dominio casi nativo
+  // Interpretación (familias):
+  // 2000–3000: Básico; 5000–6000: Lectura no especializada;
+  // 8000–9000: Alto; 10000+: Dominio casi nativo
   try {
     // Detectar VST por id o por tipo_escala 'vst-4' en opciones
     const only01 = numericAnswers.length > 0 && numericAnswers.every(a => a.value === 0 || a.value === 1);
@@ -146,7 +147,7 @@ async function calculateScores(surveyId, answers) {
       if (families >= 10000) cls = 'Dominio casi nativo';
       else if (families >= 8000) cls = 'Nivel alto';
       else if (families >= 5000) cls = 'Lectura no especializada';
-      else if (families >= 2000) cls = 'Nivel bÃ¡sico';
+      else if (families >= 2000) cls = 'Nivel básico';
       return { total: families, subscales, classification: cls };
     }
   } catch {}
@@ -298,7 +299,7 @@ const createResponse = async (req, res) => {
         });
         totalsDb = await calculateScores(sid, answersDb);
 
-        // Escribir nuevamente el total (y resumen) ya con los cÃ¡lculos desde BD
+        // Escribir nuevamente el total (y resumen) ya con los cálculos desde BD
         if (hasTotalCol) {
           await reqTx
             .input('rid_total2', sql.Int, resultadoId)
@@ -389,7 +390,7 @@ const getResponses = async (_req, res) => {
 
       const totals = await calculateScores(row.id_encuesta, answers);
 
-      // ClasificaciÃ³n para Rosenberg (encuesta 2)
+      // Clasificación para Rosenberg (encuesta 2)
       if (Number(row.id_encuesta) === 2) {
         const t = totals.total || 0;
         let cls = 'Autoestima moderada (normal)';
@@ -455,3 +456,4 @@ const getResultsByUser = async (req, res) => {
 };
 
 export { createResponse, getResponses, getResultsByUser };
+
