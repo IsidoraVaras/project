@@ -97,7 +97,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
                       required={!isLogin}
                       value={formData.nombre}
                       onChange={handleInputChange}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-600"
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none text-gray-900 placeholder-gray-600"
                       placeholder="Tu nombre"
                     />
                   </div>
@@ -116,7 +116,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
                       required={!isLogin}
                       value={formData.apellido}
                       onChange={handleInputChange}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-600"
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none text-gray-900 placeholder-gray-600"
                       placeholder="Tu apellido"
                     />
                   </div>
@@ -136,7 +136,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
                   required
                   value={formData.email}
                   onChange={handleInputChange}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-600"
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none text-gray-900 placeholder-gray-600"
                   placeholder="correo@gmail.com"
                 />
               </div>
@@ -154,7 +154,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
                   required
                   value={formData.password}
                   onChange={handleInputChange}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-600"
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none text-gray-900 placeholder-gray-600"
                   placeholder="••••••••"
                 />
               </div>
