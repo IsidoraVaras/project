@@ -122,12 +122,12 @@ export const CategorySurveys: React.FC<CategorySurveysProps> = ({
 
   return (
     <div>
-      <div className="flex items-center mb-8">
-        <button onClick={onBack} className="flex items-center text-gray-600 hover:text-gray-900 mr-6 transition-colors">
+      <div className="mb-8">
+        <button onClick={onBack} className="flex items-center text-gray-600 hover:text-gray-900 transition-colors">
           <ArrowLeft className="h-5 w-5 mr-2" />
           Volver a categorías
         </button>
-        <div>
+        <div className="mt-4">
           <h2 className="text-3xl font-bold text-gray-900 mb-2">{categoryTitle}</h2>
           <p className="text-gray-500">{surveys.length} encuestas disponibles.</p>
         </div>
