@@ -9,7 +9,8 @@ interface ProfileFormProps {
 
 export const ProfileForm: React.FC<ProfileFormProps> = ({ user, onUpdateProfile }) => {
   const [formData, setFormData] = useState({
-    name: user.name,
+    nombre: user.nombre,
+    apellido: user.apellido,
     email: user.email,
   });
   const [success, setSuccess] = useState(false);
@@ -42,7 +43,9 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({ user, onUpdateProfile 
               <User className="h-8 w-8 text-white" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">{user.name}</h3>
+              <h3 className="text-lg font-semibold text-gray-900">
+                {`${user.nombre} ${user.apellido}`}
+              </h3>
               <p className="text-gray-700 text-sm capitalize">{user.role}</p>
             </div>
           </div>
@@ -56,12 +59,26 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({ user, onUpdateProfile 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-gray-800 mb-2">
-                Nombre completo
+                Nombre
               </label>
               <input
                 type="text"
-                name="name"
-                value={formData.name}
+                name="nombre"
+                value={formData.nombre}
+                onChange={handleInputChange}
+                required
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-800 mb-2">
+                Apellido
+              </label>
+              <input
+                type="text"
+                name="apellido"
+                value={formData.apellido}
                 onChange={handleInputChange}
                 required
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900"

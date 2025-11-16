@@ -39,7 +39,12 @@ export const useAuth = () => {
     }
   };
 
-  const register = async (nombre: string, apellido: string, email: string, password: string): Promise<boolean> => {
+  const register = async (
+    nombre: string,
+    apellido: string,
+    email: string,
+    password: string
+  ): Promise<boolean> => {
     try {
       const response = await fetch('http://localhost:3001/api/register', {
         method: 'POST',
@@ -47,7 +52,7 @@ export const useAuth = () => {
         body: JSON.stringify({ nombre, apellido, email, password }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (response.ok) {
         const newUser: User = { id: data.user.id, nombre, apellido, email, role: 'client' };
@@ -55,8 +60,19 @@ export const useAuth = () => {
         localStorage.setItem('currentUser', JSON.stringify(newUser));
         return true;
       }
+
+      // Correo ya registrado
+      if (response.status === 409) {
+        throw new Error('EMAIL_TAKEN');
+      }
+
       return false;
     } catch (error) {
+      // Dejar que el formulario maneje el caso de correo duplicado
+      if (error instanceof Error && error.message === 'EMAIL_TAKEN') {
+        throw error;
+      }
+
       console.error('Error al registrar usuario:', error);
       return false;
     }
