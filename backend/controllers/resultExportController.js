@@ -1,11 +1,8 @@
-// backend/controllers/resultExportController.js
-// Provides exportResultPdf without modifying the existing responseController (which may have non-UTF8 content).
-
 import { getConnection } from '../db.js';
 import sql from 'mssql';
 
-// Helper: check if a column exists (to safely select optional fields)
 async function columnExists(pool, schema, table, column) {
+  // Verifica si una columna existe en la tabla indicada 
   const q = `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=@s AND TABLE_NAME=@t AND COLUMN_NAME=@c`;
   const rs = await pool
     .request()
@@ -17,12 +14,12 @@ async function columnExists(pool, schema, table, column) {
 }
 
 export const exportResultPdf = async (req, res) => {
+  // Validar ID de resultado recibido por parámetro.
   const rid = parseInt(req.params.id, 10);
   if (Number.isNaN(rid)) {
     return res.status(400).json({ message: 'ID de resultado invalido' });
   }
 
-  // Load pdfkit dynamically
   let PDFDocument;
   try {
     const mod = await import('pdfkit');
@@ -35,9 +32,11 @@ export const exportResultPdf = async (req, res) => {
   try {
     const pool = await getConnection();
 
+    // Revisar si existen las columnas de resumen y puntaje total en la tabla resultados.
     const hasTotalCol = await columnExists(pool, 'dbo', 'resultados', 'puntaje_total');
     const hasResumenCol = await columnExists(pool, 'dbo', 'resultados', 'resumen_json');
 
+    // Consulta del encabezado del resultado 
     let hdrSql = `SELECT r.id, r.fecha, r.id_usuario, r.id_encuesta, `;
     hdrSql += hasTotalCol ? `r.puntaje_total AS puntaje_total, ` : `CAST(NULL AS INT) AS puntaje_total, `;
     hdrSql += hasResumenCol ? `r.resumen_json AS resumen_json, ` : `CAST(NULL AS NVARCHAR(MAX)) AS resumen_json, `;
@@ -53,6 +52,7 @@ export const exportResultPdf = async (req, res) => {
     }
     const row = hdr.recordset[0];
 
+    // Consulta de todas las respuestas asociadas al resultado 
     const a = await pool
       .request()
       .input('rid', sql.Int, rid)
@@ -76,6 +76,7 @@ export const exportResultPdf = async (req, res) => {
               WHERE r.id_resultado=@rid
               ORDER BY p.id`);
 
+    // Normaliza cada respuesta para tener: texto de pregunta, valor y etiqueta 
     const answers = (a.recordset || []).map((r) => {
       const val = (typeof r.valor_numerico === 'number' && !Number.isNaN(r.valor_numerico))
         ? r.valor_numerico
@@ -88,7 +89,6 @@ export const exportResultPdf = async (req, res) => {
       };
     });
 
-    // Use persisted totals if available; otherwise compute a simple sum fallback
     let total = row.puntaje_total;
     if (total === null || typeof total === 'undefined') {
       total = answers.reduce((s, a) => {
@@ -97,6 +97,7 @@ export const exportResultPdf = async (req, res) => {
       }, 0);
     }
 
+    // Extraer clasificación, promedio y subescalas 
     let classification;
     let avg;
     let subscales = {};
@@ -105,7 +106,6 @@ export const exportResultPdf = async (req, res) => {
         const obj = JSON.parse(row.resumen_json);
         classification = obj.classification;
         avg = obj.avg;
-        // anything else numeric treat as subscale
         Object.keys(obj || {}).forEach((k) => {
           if (k === 'classification' || k === 'avg') return;
           subscales[k] = obj[k];
@@ -113,6 +113,7 @@ export const exportResultPdf = async (req, res) => {
       } catch {}
     }
 
+    // limpiar cadenas y armar datos del encabezado del PDF
     const safe = (s) => String(s ?? '').replace(/[\r\n]+/g, ' ').trim();
     const nombre = `${safe(row.nombre)} ${safe(row.apellido)}`.trim();
     const email = safe(row.email);
@@ -120,7 +121,7 @@ export const exportResultPdf = async (req, res) => {
     const fecha = row.fecha instanceof Date ? row.fecha : new Date(row.fecha);
     const fechaStr = fecha.toLocaleString();
 
-    // Prepare response headers
+    // Nombre de archivo PDF
     const y = fecha.getFullYear();
     const m = String(fecha.getMonth() + 1).padStart(2, '0');
     const d = String(fecha.getDate()).padStart(2, '0');
@@ -128,11 +129,11 @@ export const exportResultPdf = async (req, res) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-    // Create PDF
+    // Crear documento PDF 
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
     doc.pipe(res);
 
-    // Title and header info (title only, no "Encuesta" prefix)
+    // Encabezado del informe 
     doc.fontSize(18).text(titulo, { align: 'left' });
     doc.moveDown(0.5);
     doc.fontSize(11);
@@ -141,6 +142,7 @@ export const exportResultPdf = async (req, res) => {
     doc.text(`Fecha: ${fechaStr}`);
     doc.moveDown(0.75);
 
+    // Resumen numérico
     if (typeof total !== 'undefined') doc.text(`Puntaje total: ${total}`);
     if (typeof avg !== 'undefined') doc.text(`Promedio: ${avg}`);
     if (classification) doc.text(`Interpretacion: ${classification}`);
@@ -152,12 +154,11 @@ export const exportResultPdf = async (req, res) => {
       }
     }
 
-    // Separator
     doc.moveDown(0.75);
     doc.moveTo(doc.x, doc.y).lineTo(545, doc.y).stroke();
     doc.moveDown(0.75);
 
-    // Q&A
+    // Listado de preguntas y respuestas 
     answers.forEach((ans, idx) => {
       const qn = idx + 1;
       const qText = `${qn}. ${ans.questionText}`;
@@ -177,4 +178,3 @@ export const exportResultPdf = async (req, res) => {
     return res.status(500).json({ message: 'Error interno al generar PDF.' });
   }
 };
-
