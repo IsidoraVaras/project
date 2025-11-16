@@ -16,7 +16,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
           {/* Logos */}
           <div className="flex items-center space-x-3">
             <img src={logoudla} alt="Logo UDLA" className="h-12 w-auto" />
-            <img src={logocipaes} alt="Logo CIPAES" className="h-40 w-auto" />
+            <img src={logocipaes} alt="Logo CIPAES" className="h-12 w-auto" />
           </div>
 
           <button

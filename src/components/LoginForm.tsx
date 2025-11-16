@@ -1,6 +1,7 @@
 // src/components/LoginForm.tsx
 import React, { useState } from 'react';
 import { Mail, Lock, User, ArrowLeft } from 'lucide-react';
+import logocipaes from '../assets/LogoCIPAES.png';
 
 interface LoginFormProps {
   onLogin: (email: string, password: string) => Promise<boolean>;
@@ -81,6 +82,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
           </button>
 
           <div className="text-center mb-8">
+            <img
+              src={logocipaes}
+              alt="Logo CIPAES"
+              className="h-12 w-auto mx-auto mb-4"
+            />
             <h2 className="text-3xl font-bold text-gray-900 mb-2">
               {isLogin ? 'Iniciar Sesión' : 'Crear Cuenta'}
             </h2>
@@ -206,4 +212,3 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
     </div>
   );
 };
-
