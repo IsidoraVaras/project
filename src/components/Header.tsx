@@ -23,7 +23,9 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2 text-gray-800">
                 <UserIcon className="h-5 w-5" />
-                <span className="text-sm font-medium">{user.name}</span>
+                <span className="text-sm font-medium">
+                  {`${user.nombre} ${user.apellido}`}
+                </span>
                 <span className="text-xs bg-orange-600 text-white px-2 py-1 rounded-full uppercase">
                   {user.role === 'admin' ? 'Administrador' : 'Cliente'}
                 </span>
