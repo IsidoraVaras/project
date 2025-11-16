@@ -1,4 +1,3 @@
-// src/hooks/useAuth.ts
 import { useState, useEffect } from 'react';
 import { User } from '../types';
 
@@ -25,8 +24,6 @@ export const useAuth = () => {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        // Asegúrate de que los nombres de las propiedades coincidan con los de tu API.
-        // Si tu API devuelve 'name' y 'lastName', ajústalos a 'nombre' y 'apellido'.
         const user: User = { ...data.user, nombre: data.user.nombre, apellido: data.user.apellido };
         setCurrentUser(user);
         localStorage.setItem('currentUser', JSON.stringify(user));
@@ -61,14 +58,12 @@ export const useAuth = () => {
         return true;
       }
 
-      // Correo ya registrado
       if (response.status === 409) {
         throw new Error('EMAIL_TAKEN');
       }
 
       return false;
     } catch (error) {
-      // Dejar que el formulario maneje el caso de correo duplicado
       if (error instanceof Error && error.message === 'EMAIL_TAKEN') {
         throw error;
       }

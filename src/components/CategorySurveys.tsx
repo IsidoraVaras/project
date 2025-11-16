@@ -1,10 +1,8 @@
-// src/components/CategorySurveys.tsx
-
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, User, ChevronRight, Loader2 } from 'lucide-react';
 import { Survey, Question } from '../types';
 
-// 1. Interfaz de datos esperados del Backend (basado en dbo.encuestas)
+// Interfaz de datos esperados 
 interface DBSurvey {
   id: number;
   titulo: string;
@@ -12,13 +10,12 @@ interface DBSurvey {
   id_categoria: number;
 }
 
-// 2. Props del componente
 interface CategorySurveysProps {
   categoryId: number;
   categoryTitle: string;
   onBack: () => void;
   onSurveySelect: (survey: Survey) => void;
-  completedSurveyIds?: string[]; // nuevas: encuestas ya respondidas por el usuario
+  completedSurveyIds?: string[]; 
 }
 
 export const CategorySurveys: React.FC<CategorySurveysProps> = ({
@@ -50,7 +47,7 @@ export const CategorySurveys: React.FC<CategorySurveysProps> = ({
 
         const data: DBSurvey[] = await response.json();
 
-        // Mapear encuestas y obtener el conteo real de preguntas desde el backend
+        // Mapear encuestas y obtener el conteo real de preguntas
         const baseSurveys: Survey[] = data.map((dbSurvey) => ({
           id: String(dbSurvey.id),
           title: dbSurvey.titulo,
@@ -157,10 +154,7 @@ export const CategorySurveys: React.FC<CategorySurveysProps> = ({
                     {completed && (
                       <span className="text-xs text-green-800 bg-green-100 px-2 py-1 rounded-full">Completada</span>
                     )}
-                    {/* etiqueta autor removida */}
                   </div>
-
-                  {/* descripción no visible */}
 
                   <div className="flex items-center space-x-6 text-sm text-gray-600">
                     <div className="flex items-center space-x-2">

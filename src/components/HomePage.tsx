@@ -10,10 +10,10 @@ interface HomePageProps {
 export const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
+      {/* Header principal */}
       <header className="w-full bg-gray-100 shadow-sm border-b border-gray-300">
         <div className="flex justify-between items-center h-16 px-4 sm:px-6 lg:px-8">
-          {/* Logo + Título */}
+          {/* Logos */}
           <div className="flex items-center space-x-3">
             <img src={logoudla} alt="Logo UDLA" className="h-12 w-auto" />
             <img src={logocipaes} alt="Logo CIPAES" className="h-40 w-auto" />
@@ -28,7 +28,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
         </div>
       </header>
 
-      {/* Hero Section */}
+      {/* Sección principal*/}
       <section className="relative py-20 px-4 bg-gray-50">
         <div className="max-w-6xl mx-auto text-center">
           <div className="mb-8">
@@ -46,7 +46,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
         </div>
       </section>
 
-      {/* Features Section */}
+      {/* Sección de categorías */}
       <section className="py-16 px-4 bg-gray-200">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-3xl font-bold text-gray-900 text-center mb-12">
@@ -73,7 +73,6 @@ export const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
         </div>
       </section>
 
-      {/* CTA Section */}
       <section className="py-16 px-4 bg-gray-100">
         <div className="max-w-4xl mx-auto text-center bg-white border border-gray-300 rounded-2xl p-12 shadow-lg">
           <h2 className="text-3xl font-bold text-gray-900 mb-4">
@@ -92,7 +91,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onLoginClick }) => {
         </div>
       </section>
 
-      {/* Footer */}
+      {/* Footer final */}
       <footer className="bg-gray-800 border-t border-gray-600 py-8 px-4">
         <div className="max-w-6xl mx-auto text-center">
           <div className="flex items-center justify-center space-x-3 mb-4">

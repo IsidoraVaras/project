@@ -1,5 +1,3 @@
-// src/types/index.ts
-
 export interface User {
   id: string;
   nombre: string;
@@ -24,7 +22,7 @@ export interface QuestionOption {
   label: string;
   value: number | string;
   orden?: number;
-  group?: string; // para subescalas (e.g. LSAS: miedo/evitación)
+  group?: string; 
 }
 
 
@@ -32,8 +30,6 @@ export interface Survey {
   id: string;
   title: string;
   description: string;
-  // La propiedad 'category' acepta cualquier string.
-  // Esto es necesario porque le asignamos el ID de la categoría (ej., "1")
   category: string;
   questions: Question[];
   createdAt: Date;
@@ -50,8 +46,8 @@ export interface Answer {
 export interface SurveyTotals {
   total: number;
   subscales: Record<string, number>;
-  classification?: string; // e.g., Rosenberg: Baja/Moderada/Alta
-  avg?: number; // promedio general si aplica (e.g., MSPSS)
+  classification?: string; 
+  avg?: number; 
 }
 
 export interface SurveyResponse {
@@ -64,7 +60,6 @@ export interface SurveyResponse {
 }
 
 export interface Category {
-  // El ID de la categoría puede ser string o number (DB es INT)
   id: string | number;
   nombre: string;
 }

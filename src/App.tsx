@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { Header } from './components/Header';
 import { HomePage } from './components/HomePage';
@@ -9,96 +9,100 @@ import { AdminDashboard } from './components/AdminDashboard';
 type View = 'home' | 'login' | 'dashboard';
 
 function App() {
-  const { currentUser, loading, login, register, logout, updateProfile } = useAuth();
-const [currentView, setCurrentView] = useState<View>(() => {
-  try {
-    const v = localStorage.getItem('app.view') as View | null;
-    return v ?? 'home';
-  } catch {
-    return 'home';
+  const { currentUser, loading, login, register, logout, updateProfile } = useAuth();
+
+  // Vista actual de la app 
+  const [currentView, setCurrentView] = useState<View>(() => {
+    try {
+      const v = localStorage.getItem('app.view') as View | null;
+      return v ?? 'home';
+    } catch {
+      return 'home';
+    }
+  });
+
+  // Guardar la vista actual para mantenerla al recargar
+  useEffect(() => {
+    try {
+      localStorage.setItem('app.view', currentView);
+    } catch {}
+  }, [currentView]);
+
+  // Si se recarga estando en dashboard, redirigir a login
+  useEffect(() => {
+    if (!loading && !currentUser && currentView === 'dashboard') {
+      setCurrentView('login');
+    }
+  }, [loading, currentUser, currentView]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-200 flex items-center justify-center">
+        <div className="text-gray-900">Cargando...</div>
+      </div>
+    );
   }
-});
 
-// Persist view across reloads
-useEffect(() => {
-  try { localStorage.setItem('app.view', currentView); } catch {}
-}, [currentView]);
+  const handleLoginSuccess = () => {
+    setCurrentView('dashboard');
+  };
 
-// Guard: if reloaded on dashboard without session, go to login
-useEffect(() => {
-  if (!loading && !currentUser && currentView === 'dashboard') {
+  const handleLogout = () => {
+    logout();
+    setCurrentView('home');
+  };
+
+  const handleLoginClick = () => {
     setCurrentView('login');
-  }
-}, [loading, currentUser]);
+  };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-200 flex items-center justify-center">
-        <div className="text-gray-900">Cargando...</div>
-      </div>
-    );
-  }
+  const handleBackToHome = () => {
+    setCurrentView('home');
+  };
 
-  const handleLoginSuccess = () => {
-    setCurrentView('dashboard');
-  };
+  const renderCurrentView = () => {
+    switch (currentView) {
+      case 'home':
+        return <HomePage onLoginClick={handleLoginClick} />;
 
-  const handleLogout = () => {
-    logout();
-    setCurrentView('home');
-  };
+      case 'login':
+        return (
+          <LoginForm
+            onLogin={async (email, password) => {
+              const success = await login(email, password);
+              if (success) handleLoginSuccess();
+              return success;
+            }}
+            // Registro 
+            onRegister={async (nombre, apellido, email, password) => {
+              const success = await register(nombre, apellido, email, password);
+              if (success) handleLoginSuccess();
+              return success;
+            }}
+            onBack={handleBackToHome}
+          />
+        );
 
-  const handleLoginClick = () => {
-    setCurrentView('login');
-  };
+      case 'dashboard':
+        if (!currentUser) return null;
 
-  const handleBackToHome = () => {
-    setCurrentView('home');
-  };
+        return (
+          <div>
+            <Header user={currentUser} onLogout={handleLogout} />
+            {currentUser.role === 'admin' ? (
+              <AdminDashboard user={currentUser} />
+            ) : (
+              <ClientDashboard user={currentUser} onUpdateProfile={updateProfile} />
+            )}
+          </div>
+        );
 
-  const renderCurrentView = () => {
-    switch (currentView) {
-      case 'home':
-        return <HomePage onLoginClick={handleLoginClick} />;
-        
-      case 'login':
-        return (
-          <LoginForm
-            onLogin={async (email, password) => {
-              const success = await login(email, password);
-              if (success) handleLoginSuccess();
-              return success;
-            }}
-            // CAMBIO CLAVE AQUÍ: AÑADIR 'apellido' a la lista de argumentos.
-            onRegister={async (nombre, apellido, email, password) => {
-              const success = await register(nombre, apellido, email, password);
-              if (success) handleLoginSuccess();
-              return success;
-            }}
-            onBack={handleBackToHome}
-          />
-        );
-        
-      case 'dashboard':
-        if (!currentUser) return null;
-        
-        return (
-          <div>
-            <Header user={currentUser} onLogout={handleLogout} />
-            {currentUser.role === 'admin' ? (
-              <AdminDashboard user={currentUser} />
-            ) : (
-              <ClientDashboard user={currentUser} onUpdateProfile={updateProfile} />
-            )}
-          </div>
-        );
-        
-      default:
-        return <HomePage onLoginClick={handleLoginClick} />;
-    }
-  };
+      default:
+        return <HomePage onLoginClick={handleLoginClick} />;
+    }
+  };
 
-  return <div className="app">{renderCurrentView()}</div>;
+  return <div className="app">{renderCurrentView()}</div>;
 }
 
 export default App;
