@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut, User as UserIcon, BarChart3 } from 'lucide-react';
+import { LogOut, User as UserIcon } from 'lucide-react';
 import { User } from '../types';
 import logoudla from '../assets/logoudla.png';
 
