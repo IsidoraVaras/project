@@ -1,5 +1,3 @@
-// backend/routes/userRoutes.js
-
 import express from 'express';
 import { registerUser, loginUser, listUsers, createAdminUser, deleteAdminUser } from '../controllers/userController.js';
 import {
@@ -17,7 +15,8 @@ const router = express.Router();
 router.post('/register', registerUser);
 router.post('/login', loginUser);
 router.get('/users', listUsers);
-// Crear admin (siempre rol 'admin')
+
+// Crear admin 
 router.post('/admin/users', createAdminUser);
 router.delete('/admin/users/:id', deleteAdminUser);
 
