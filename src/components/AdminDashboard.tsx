@@ -1,4 +1,3 @@
-// src/components/AdminDashboard.tsx
 import React, { useState, useEffect } from 'react';
 import { Users, ClipboardList, BarChart3, Eye, ArrowLeft, UserPlus, EyeOff, Trash2, Shield, AlertTriangle, X } from 'lucide-react';
 import { User, SurveyResponse, Survey } from '../types';
@@ -7,6 +6,7 @@ interface AdminDashboardProps {
   user: User;
 }
 
+// Vistas disponibles dentro del panel admin
 type View = 'overview' | 'responses' | 'user-detail' | 'response-detail' | 'create-admin' | 'manage-admins';
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
@@ -19,22 +19,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       return 'overview';
     }
   });
+
+  // Usuario seleccionado y respuesta seleccionada para ver detalle
   const [selectedUserId, setSelectedUserId] = useState<string>(() => {
     try { return localStorage.getItem('admin.selectedUserId') || ''; } catch { return ''; }
   });
   const [selectedResponseId, setSelectedResponseId] = useState<string>(() => {
     try { return localStorage.getItem('admin.selectedResponseId') || ''; } catch { return ''; }
   });
+
+  // Listas de usuarios y administradores
   const [clients, setClients] = useState<User[]>([]);
   const [admins, setAdmins] = useState<User[]>([]);
   const [adminQuery, setAdminQuery] = useState('');
   const [participantQuery, setParticipantQuery] = useState('');
-  // Modal de confirmación de eliminación
+
+  // confirmación de eliminación
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; user: User | null; loading: boolean; error?: string }>({ open: false, user: null, loading: false });
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [surveyQuestions, setSurveyQuestions] = useState<Record<string, {id: string; text: string}[]>>({});
+  
   // Formulario de creación de admin
   const [adminForm, setAdminForm] = useState({ nombre: '', apellido: '', email: '', password: '' });
   const [showAdminPassword, setShowAdminPassword] = useState(false);
@@ -52,7 +58,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     try { localStorage.setItem('admin.selectedResponseId', selectedResponseId || ''); } catch {}
   }, [selectedResponseId]);
 
-  // Si hay inconsistencia (detalle sin selección), volver a overview
   useEffect(() => {
     if ((currentView === 'user-detail' || currentView === 'response-detail') && !selectedUserId) {
       setCurrentView('overview');
@@ -62,6 +67,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     }
   }, [currentView, selectedUserId, selectedResponseId]);
 
+  // Carga inicial de datos del panel
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -78,7 +84,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         setClients(clientsData.filter((u: User) => u.role === 'client'));
         setAdmins(clientsData.filter((u: User) => u.role === 'admin'));
         setResponses(responsesData);
-        // Mapear encuestas del backend a la interfaz Survey
+
         const mappedSurveys: Survey[] = surveysRaw.map((s: any) => ({
           id: String(s.id),
           title: s.titulo,
@@ -101,7 +107,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     fetchData();
   }, []);
 
-  // Cargar textos de preguntas para el usuario seleccionado (muestra en detalle)
+  // Cargar textos de preguntas para el usuario seleccionado 
   useEffect(() => {
     const loadQuestions = async () => {
       if ((currentView !== 'user-detail' && currentView !== 'response-detail') || !selectedUserId) return;
@@ -131,10 +137,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     return <div className="text-center py-12">Cargando datos del panel de administración...</div>;
   }
   
+  // Filtra respuestas de un usuario
   const getResponsesForUser = (userId: string) => {
     return responses.filter(r => String(r.userId) === String(userId));
   };
 
+  // Vista: panel general - resumen
   const renderOverview = () => (
     <div>
       <div className="mb-8">
@@ -232,6 +240,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     </div>
   );
 
+  // Listado de respuestas
   const renderResponses = () => (
     <div>
       <div className="mb-8">
@@ -297,6 +306,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     </div>
   );
 
+  // Gestión de administradores
   const renderManageAdmins = () => {
     const q = adminQuery.trim().toLowerCase();
     const filtered = q
@@ -356,6 +366,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     );
   };
 
+  // Confirmación para eliminar administrador
   const renderDeleteModal = () => {
     if (!deleteModal.open || !deleteModal.user) return null;
     const u = deleteModal.user;
@@ -424,6 +435,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     );
   };
 
+  // Formulario para crear un nuevo administrador
   const renderCreateAdmin = () => (
     <div>
       <div className="mb-8">
@@ -554,6 +566,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     </div>
   );
 
+  // Detalle de un usuario específico
   const renderUserDetail = () => {
     const user = clients.find(u => u.id === selectedUserId);
     const userResponses = getResponsesForUser(selectedUserId);
@@ -672,6 +685,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     }
   };
 
+  // Detalle de una respuesta específica
   const renderResponseDetail = () => {
     if (!selectedResponseId) return null;
     const response = responses.find(r => String(r.id) === String(selectedResponseId));
