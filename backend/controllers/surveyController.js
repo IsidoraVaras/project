@@ -1,5 +1,3 @@
-// backend/controllers/surveyController.js
-
 import { getConnection } from '../db.js';
 import sql from 'mssql';
 
@@ -26,6 +24,7 @@ const getSurveysByCategory = async (req, res) => {
 
   try {
     const pool = await getConnection();
+    // Encuestras filtradas por categoría
     const result = await pool
       .request()
       .input('categoryId', sql.Int, categoryId)
@@ -40,7 +39,7 @@ const getSurveysByCategory = async (req, res) => {
   }
 };
 
-// Obtener preguntas por encuesta, incluyendo opciones_respuesta
+// Obtener preguntas por encuesta
 const getQuestionsBySurvey = async (req, res) => {
   const { id } = req.params;
   const surveyId = parseInt(id, 10);
@@ -68,7 +67,7 @@ const getQuestionsBySurvey = async (req, res) => {
       return res.status(200).json([]);
     }
 
-    // 2) Opciones de respuesta para las preguntas de esta encuesta
+    // 2) Opciones de respuesta asociadas a las preguntas de la encuesta
     const optionsResult = await pool
       .request()
       .input('surveyId', sql.Int, surveyId)
@@ -88,7 +87,7 @@ const getQuestionsBySurvey = async (req, res) => {
 
     const options = optionsResult.recordset || [];
 
-    // 3) Agrupar opciones por id_pregunta
+    // 3) Agrupar opciones 
     const optionsByQuestion = options.reduce((acc, opt) => {
       const key = String(opt.id_pregunta);
       if (!acc[key]) acc[key] = [];
@@ -104,7 +103,6 @@ const getQuestionsBySurvey = async (req, res) => {
       return acc;
     }, {});
 
-    // 4) Construir payload
     const payload = questions.map((q) => ({
       id: q.id,
       texto: q.texto,
@@ -120,10 +118,11 @@ const getQuestionsBySurvey = async (req, res) => {
 
 export { getCategories, getSurveysByCategory, getQuestionsBySurvey };
 
-// --- NUEVO: listar todas las encuestas ---
+// listar todas las encuestas 
 export const getAllSurveys = async (_req, res) => {
   try {
     const pool = await getConnection();
+    // Lista todas las encuestas con el nombre de su categoría
     const result = await pool
       .request()
       .query(

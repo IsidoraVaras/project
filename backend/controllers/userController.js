@@ -1,12 +1,12 @@
-// backend/controllers/userController.js (VERSIÓN COMPLETA CON LOGIN Y REGISTRO)
-
 import { getConnection } from '../db.js';
 import sql from 'mssql';
 import bcrypt from 'bcrypt';
 
+// Registro de usuario 
 const registerUser = async (req, res) => {
   const { nombre, apellido, email, password } = req.body;
 
+  // Validación de campos obligatorios
   if (!nombre || !apellido || !email || !password) {
     return res.status(400).json({ message: 'Todos los campos son obligatorios.' });
   }
@@ -15,6 +15,7 @@ const registerUser = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     const pool = await getConnection();
 
+    // Verificar si ya existe un usuario con el mismo correo
     const userExists = await pool.request()
       .input('email', sql.NVarChar, email)
       .query('SELECT 1 FROM usuarios WHERE email = @email');
@@ -55,9 +56,11 @@ const registerUser = async (req, res) => {
   }
 };
 
+// Login de usuario 
 const loginUser = async (req, res) => {
   const { email, password } = req.body;
 
+  // Validación básica de credenciales
   if (!email || !password) {
     return res.status(400).json({ success: false, message: 'Correo y contraseña son obligatorios.' });
   }
@@ -74,6 +77,7 @@ const loginUser = async (req, res) => {
     }
 
     const user = userResult.recordset[0];
+
     const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (passwordMatch) {
@@ -97,13 +101,15 @@ const loginUser = async (req, res) => {
 
 export { registerUser, loginUser };
 
-// --- NUEVO: listar usuarios para panel admin ---
+// listar usuarios para panel admin 
 export const listUsers = async (_req, res) => {
   try {
     const pool = await getConnection();
+    // Traer todos los usuarios para mostrarlos en el panel 
     const rs = await pool.request().query(
       'SELECT id, nombre, apellido, email, rol FROM usuarios'
     );
+
     const users = rs.recordset.map((u) => ({
       id: String(u.id),
       nombre: u.nombre,
@@ -118,10 +124,11 @@ export const listUsers = async (_req, res) => {
   }
 };
 
-// --- NUEVO: crear usuario con rol admin ---
+// crear usuario con rol admin 
 export const createAdminUser = async (req, res) => {
   const { nombre, apellido, email, password } = req.body || {};
 
+  // Validación de datos para crear admin
   if (!nombre || !apellido || !email || !password) {
     return res.status(400).json({ message: 'Todos los campos son obligatorios.' });
   }
@@ -129,7 +136,7 @@ export const createAdminUser = async (req, res) => {
   try {
     const pool = await getConnection();
 
-    // verificar si existe email
+    // Verificar si el correo ya está en uso
     const existing = await pool
       .request()
       .input('email', sql.NVarChar, email)
@@ -165,10 +172,11 @@ export const createAdminUser = async (req, res) => {
   }
 };
 
-// --- NUEVO: eliminar usuario con rol admin ---
+// eliminar usuario con rol admin 
 export const deleteAdminUser = async (req, res) => {
   const idParam = req.params.id;
   const id = parseInt(idParam, 10);
+
   if (Number.isNaN(id)) {
     return res.status(400).json({ message: 'ID inválido.' });
   }
@@ -176,7 +184,7 @@ export const deleteAdminUser = async (req, res) => {
   try {
     const pool = await getConnection();
 
-    // Verificar existencia y rol
+    // Verificar que el usuario exista y que tenga rol admin
     const userRs = await pool
       .request()
       .input('id', sql.Int, id)
@@ -189,7 +197,7 @@ export const deleteAdminUser = async (req, res) => {
       return res.status(403).json({ message: 'El usuario no tiene rol admin.' });
     }
 
-    // Eliminar por ID (ya verificado que es admin)
+    // Eliminar usuario admin por ID 
     const result = await pool
       .request()
       .input('id', sql.Int, id)
@@ -204,7 +212,7 @@ export const deleteAdminUser = async (req, res) => {
     return res.status(200).json({ success: true });
   } catch (err) {
     console.error('Error al eliminar admin:', err);
-    // SQL Server FK violation
+    
     if (err && (err.number === 547 || String(err.message || '').includes('DELETE statement conflicted'))) {
       return res.status(409).json({ message: 'No se puede eliminar: tiene registros relacionados.' });
     }

@@ -1,9 +1,6 @@
-// backend/controllers/responseController.js
 import { getConnection } from '../db.js';
 import sql from 'mssql';
-// PDF export uses optional dependency loaded dynamically to avoid startup errors
 
-// Check if a column exists in a table
 async function columnExists(pool, schema, table, column) {
   const q = `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=@s AND TABLE_NAME=@t AND COLUMN_NAME=@c`;
   const rs = await pool
@@ -15,7 +12,7 @@ async function columnExists(pool, schema, table, column) {
   return rs.recordset.length > 0;
 }
 
-// Compute total and subscales (supports LSAS with |miedo and |evitacion suffixes)
+// Calcular escala total y subescalas
 async function calculateScores(surveyId, answers) {
   const pool = await getConnection();
 
@@ -27,17 +24,14 @@ async function calculateScores(surveyId, answers) {
   const orderMap = new Map(); // id -> index (1..N)
   qRes.recordset.forEach((row, idx) => orderMap.set(String(row.id), idx + 1));
 
-  // numeric answers
   const numericAnswers = (answers || [])
     .map(a => ({ qid: String(a.questionId), value: Number(a.answer) }))
     .filter(a => !Number.isNaN(a.value));
 
-  // Default total (simple suma)
   let total = numericAnswers.reduce((s, a) => s + a.value, 0);
 
   const subscales = {};
 
-  // LSAS detection by suffix
   const fear = numericAnswers
     .filter(a => a.qid.toLowerCase().includes('|miedo'))
     .reduce((s, a) => s + a.value, 0);
@@ -49,7 +43,6 @@ async function calculateScores(surveyId, answers) {
     subscales['Evitacion'] = avoid;
   }
 
-  // Subscales by ranges from DB (if table is present)
   try {
     const ssRes = await pool
       .request()
@@ -74,8 +67,7 @@ async function calculateScores(surveyId, answers) {
     }
   } catch {}
 
-  // Encuesta 2 (Rosenberg): recodificación inversa de ítems 3,5,8,9,10 (1..4 => 4..1)
-  // y total ajustado.
+  // Encuesta 2 (Rosenberg)
   try {
     if (Number(surveyId) === 2) {
       const invertedIdx = new Set([3, 5, 8, 9, 10]);
@@ -92,41 +84,33 @@ async function calculateScores(surveyId, answers) {
     }
   } catch {}
 
-  // Encuesta 5 (MSPSS): el puntaje total es PROMEDIO 1..7
+  // Encuesta 5 (MSPSS)
   try {
     if (Number(surveyId) === 5) {
       const count = numericAnswers.length || 1;
       const avg = count > 0 ? (numericAnswers.reduce((s, a) => s + a.value, 0) / count) : 0;
-      // Guardar como total el promedio, con dos decimales
       total = Math.round(avg * 100) / 100;
-      // Clasificación según Zimet et al. (1988)
       let cls = undefined;
       if (avg >= 1.0 && avg <= 2.9) cls = 'Bajo apoyo percibido';
       else if (avg >= 3.0 && avg <= 5.0) cls = 'Apoyo moderado';
       else if (avg >= 5.1 && avg <= 7.0) cls = 'Alto apoyo percibido';
-      // Devolver también avg explícito
       return { total, subscales, avg: Math.round(avg * 100) / 100, classification: cls };
     }
   } catch {}
 
-  // Encuesta 6 (FLCAS): clasificación por rangos del total
+  // Encuesta 6 (FLCAS)
   try {
     if (Number(surveyId) === 6) {
       const t = total || 0;
-      let lvl = 'Baja'; // 33–69
+      let lvl = 'Baja'; // 33ï¿½69
       if (t >= 90) lvl = 'Alta';
       else if (t >= 70) lvl = 'Moderada';
       return { total, subscales, classification: 'Ansiedad ' + lvl };
     }
   } catch {}
 
-  // Encuesta 7: Tamaño del vocabulario (VST)
-  // Total = respuestas correctas x 100 (familias de palabras)
-  // Interpretación (familias):
-  // 2000–3000: Básico; 5000–6000: Lectura no especializada;
-  // 8000–9000: Alto; 10000+: Dominio casi nativo
+  // Encuesta 7
   try {
-    // Detectar VST por id o por tipo_escala 'vst-4' en opciones
     const only01 = numericAnswers.length > 0 && numericAnswers.every(a => a.value === 0 || a.value === 1);
     let hasVstScale = false;
     try {
@@ -147,7 +131,7 @@ async function calculateScores(surveyId, answers) {
       if (families >= 10000) cls = 'Dominio casi nativo';
       else if (families >= 8000) cls = 'Nivel alto';
       else if (families >= 5000) cls = 'Lectura no especializada';
-      else if (families >= 2000) cls = 'Nivel básico';
+      else if (families >= 2000) cls = 'Nivel bï¿½sico';
       return { total: families, subscales, classification: cls };
     }
   } catch {}
@@ -155,7 +139,7 @@ async function calculateScores(surveyId, answers) {
   return { total, subscales };
 }
 
-// Save a response set
+// Guardar conjunto de respuestas
 const createResponse = async (req, res) => {
   try {
     const { surveyId, userId, answers } = req.body || {};
@@ -170,7 +154,6 @@ const createResponse = async (req, res) => {
     const hasTotalCol = await columnExists(pool, 'dbo', 'resultados', 'puntaje_total');
     const hasResumenCol = await columnExists(pool, 'dbo', 'resultados', 'resumen_json');
 
-    // Compute for returning to client (we do not persist totals now)
     const totals = await calculateScores(sid, answers);
 
     const tx = new sql.Transaction(pool);
@@ -185,7 +168,6 @@ const createResponse = async (req, res) => {
                 OUTPUT INSERTED.id VALUES (@fecha, @id_usuario, @id_encuesta)`);
       const resultadoId = ins.recordset[0].id;
 
-      // Actualizar puntaje_total y resumen_json si existen las columnas
       try {
         if (hasTotalCol) {
           await reqTx
@@ -206,7 +188,6 @@ const createResponse = async (req, res) => {
         }
       } catch {}
 
-      // Insert answers
       for (const a of answers) {
         const qKey = String(a.questionId);
         const [qidStr, subLabelRaw] = qKey.split('|');
@@ -247,7 +228,6 @@ const createResponse = async (req, res) => {
         if (!Number.isNaN(valueNum)) baseReq.input('valor_numerico', sql.Int, valueNum);
         if (optionId !== null) baseReq.input('id_opcion_respuesta', sql.Int, optionId);
 
-        // Insert with extended columns, fallback if needed
         try {
           const cols = ['respuesta','id_pregunta','id_usuario'];
           const vals = ['@respuesta','@id_pregunta','@id_usuario'];
@@ -270,7 +250,6 @@ const createResponse = async (req, res) => {
         }
       }
 
-      // Recalcular totales desde las respuestas persistidas para asegurar consistencia
       let totalsDb = totals;
       try {
         const rsAns = await new sql.Request(tx)
@@ -299,7 +278,6 @@ const createResponse = async (req, res) => {
         });
         totalsDb = await calculateScores(sid, answersDb);
 
-        // Escribir nuevamente el total (y resumen) ya con los cálculos desde BD
         if (hasTotalCol) {
           await reqTx
             .input('rid_total2', sql.Int, resultadoId)
@@ -341,7 +319,6 @@ const createResponse = async (req, res) => {
   }
 };
 
-// List responses for admin
 const getResponses = async (_req, res) => {
   try {
     const pool = await getConnection();
@@ -390,7 +367,6 @@ const getResponses = async (_req, res) => {
 
       const totals = await calculateScores(row.id_encuesta, answers);
 
-      // Clasificación para Rosenberg (encuesta 2)
       if (Number(row.id_encuesta) === 2) {
         const t = totals.total || 0;
         let cls = 'Autoestima moderada (normal)';
@@ -416,7 +392,6 @@ const getResponses = async (_req, res) => {
   }
 };
 
-// Get results by user (recompute totals from answers)
 const getResultsByUser = async (req, res) => {
   try {
     const userId = parseInt(req.params.id, 10);
