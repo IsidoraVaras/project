@@ -1,7 +1,7 @@
 import React from 'react';
 import { LogOut, User as UserIcon } from 'lucide-react';
 import { User } from '../types';
-import logoudla from '../assets/logoudla.png';
+import logocipaes from '../assets/LogoCIPAES.png';
 
 interface HeaderProps {
   user: User | null;
@@ -15,7 +15,7 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center space-x-3">
             <h1 className="text-xl font-bold text-gray-900">
-              <img src={logoudla} alt="Logo UDLA" className="h-12 w-auto" />
+              <img src={logocipaes} alt="Logo CIPAES" className="h-12 w-auto" />
             </h1>
           </div>
           
