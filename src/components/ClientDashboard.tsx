@@ -17,13 +17,13 @@ type View = 'categories' | 'category-surveys' | 'survey-form' | 'results' | 'pro
 export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdateProfile }) => {
   // Vista actual dentro del panel del cliente
   const [currentView, setCurrentView] = useState<View>(() => {
-    try { return (localStorage.getItem('client.view') as View) || 'categories'; } catch { return 'categories'; }
+    try { return (window.sessionStorage.getItem('client.view') as View) || 'categories'; } catch { return 'categories'; }
   });
 
   // Categoría seleccionada 
   const [selectedCategory, setSelectedCategory] = useState<number | null>(() => {
     try {
-      const v = localStorage.getItem('client.selectedCategory');
+      const v = window.sessionStorage.getItem('client.selectedCategory');
       return v ? parseInt(v, 10) : null;
     } catch { return null; }
   });
@@ -31,7 +31,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
   // Encuesta seleccionada 
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [selectedSurveyId, setSelectedSurveyId] = useState<string>(() => {
-    try { return localStorage.getItem('client.selectedSurveyId') || ''; } catch { return ''; }
+    try { return window.sessionStorage.getItem('client.selectedSurveyId') || ''; } catch { return ''; }
   });
 
   // Resultados del usuario, encuestas y categorías cargadas 
@@ -41,14 +41,14 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try { localStorage.setItem('client.view', currentView); } catch {}
+    try { window.sessionStorage.setItem('client.view', currentView); } catch {}
   }, [currentView]);
 
   // Persistir categoría seleccionada
   useEffect(() => {
     try {
-      if (selectedCategory !== null) localStorage.setItem('client.selectedCategory', String(selectedCategory));
-      else localStorage.removeItem('client.selectedCategory');
+      if (selectedCategory !== null) window.sessionStorage.setItem('client.selectedCategory', String(selectedCategory));
+      else window.sessionStorage.removeItem('client.selectedCategory');
     } catch {}
   }, [selectedCategory]);
 
@@ -56,7 +56,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
   useEffect(() => {
     try {
       const id = selectedSurvey ? selectedSurvey.id : selectedSurveyId || '';
-      localStorage.setItem('client.selectedSurveyId', id);
+      window.sessionStorage.setItem('client.selectedSurveyId', id);
     } catch {}
   }, [selectedSurvey, selectedSurveyId]);
 

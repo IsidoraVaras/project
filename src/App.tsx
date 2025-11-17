@@ -50,6 +50,18 @@ function App() {
 
   const handleLogout = () => {
     logout();
+    // Limpiar estado de vistas internas de admin y cliente
+    try {
+      const s = window.sessionStorage;
+      s.removeItem('admin.view');
+      s.removeItem('admin.selectedUserId');
+      s.removeItem('admin.selectedResponseId');
+      s.removeItem('client.view');
+      s.removeItem('client.selectedCategory');
+      s.removeItem('client.selectedSurveyId');
+    } catch {
+      // Ignorar errores de acceso a sessionStorage
+    }
     setCurrentView('home');
   };
 
