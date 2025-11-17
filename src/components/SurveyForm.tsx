@@ -1,10 +1,7 @@
-// src/components/SurveyForm.tsx
-
 import React, { useState, useEffect } from 'react';
 import { Survey, Question, Answer, QuestionOption } from '../types';
 import { Loader2, AlertTriangle, ArrowLeft } from 'lucide-react';
 
-// ==== Tipos que devuelve el backend ====
 interface DBQuestionOption {
   id: number;
   orden: number | null;
@@ -155,7 +152,7 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
     onComplete(survey.id, finalAnswers);
   };
 
-  // ==== Estados ====
+  // Estados 
   if (loading) {
     return (
       <div className="text-center py-12">
@@ -198,7 +195,6 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
       <p className="text-gray-600 mb-8">{survey.description}</p>
 
       <form onSubmit={handleSubmit} className="space-y-8 min-w-0">
-        {/* Progreso */}
         <div className="flex items-center justify-between text-sm text-gray-600">
           <span>Pregunta {currentIndex + 1} de {questions.length}</span>
           <div className="flex-1 ml-4 h-2 bg-gray-200 rounded">
@@ -206,7 +202,6 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
           </div>
         </div>
 
-        {/* Leyenda LSAS si aplica */}
         {questions.some(x => x.type === 'lsas') && (
           <div className="p-4 border rounded bg-orange-50 text-sm text-gray-800">
             <p className="font-semibold mb-1">Escala de Ansiedad Social de Liebowitz (LSAS)</p>
@@ -229,7 +224,6 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
           </div>
         )}
 
-        {/* Una sola pregunta (forzar remount por pregunta) */}
         {([q] as Question[]).map((qq) => (
           <div key={`q-${qq.id}`} className="p-4 border-l-4 border-orange-500 bg-gray-50 rounded-r-lg shadow-sm min-w-0">
             <label className="block text-lg font-semibold text-gray-800 mb-3">
@@ -301,7 +295,6 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
           </div>
         ))}
 
-        {/* Controles */}
         <div className="flex justify-between items-center pt-4 border-t border-gray-200">
           <div className="flex gap-2">
             <button
