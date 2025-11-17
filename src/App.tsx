@@ -13,18 +13,19 @@ function App() {
 
   // Vista actual de la app 
   const [currentView, setCurrentView] = useState<View>(() => {
+    if (typeof window === 'undefined') return 'home';
     try {
-      const v = localStorage.getItem('app.view') as View | null;
+      const v = window.sessionStorage.getItem('app.view') as View | null;
       return v ?? 'home';
     } catch {
       return 'home';
     }
   });
 
-  // Guardar la vista actual para mantenerla al recargar
+  // Guardar la vista actual para mantenerla al recargar (sólo durante la sesión actual del navegador)
   useEffect(() => {
     try {
-      localStorage.setItem('app.view', currentView);
+      window.sessionStorage.setItem('app.view', currentView);
     } catch {}
   }, [currentView]);
 
