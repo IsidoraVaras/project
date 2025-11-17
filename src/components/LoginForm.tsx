@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
-import { Mail, Lock, User, ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import logocipaes from '../assets/LogoCIPAES.png';
 
 interface LoginFormProps {
   onLogin: (email: string, password: string) => Promise<boolean>;
-  onRegister: (nombre: string, apellido: string, email: string, password: string) => Promise<boolean>;
+  onRegister: (
+    nombre: string,
+    apellido: string,
+    email: string,
+    password: string
+  ) => Promise<boolean>;
   onBack: () => void;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBack }) => {
   const [isLogin, setIsLogin] = useState(true);
 
-  // Campos del formulario
   const [formData, setFormData] = useState({
     nombre: '',
     apellido: '',
@@ -21,8 +25,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Formulario para login o registro
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -32,13 +36,20 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
       let success = false;
 
       if (isLogin) {
-        // Login
         success = await onLogin(formData.email, formData.password);
-        if (!success) setError('Credenciales inválidas');
+        if (!success) {
+          setError('Credenciales inválidas');
+        }
       } else {
-        // Registro
-        success = await onRegister(formData.nombre, formData.apellido, formData.email, formData.password);
-        if (!success) setError('Error al registrar usuario');
+        success = await onRegister(
+          formData.nombre,
+          formData.apellido,
+          formData.email,
+          formData.password
+        );
+        if (!success) {
+          setError('Error al registrar usuario');
+        }
       }
     } catch (err) {
       if (!isLogin && err instanceof Error && err.message === 'EMAIL_TAKEN') {
@@ -51,9 +62,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
     }
   };
 
-  // Actualiza campos del formulario
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
     setError('');
   };
 
@@ -61,8 +71,10 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
     <div className="min-h-screen bg-gray-200 flex items-center justify-center px-4">
       <div className="max-w-md w-full">
         <div className="bg-white border border-gray-300 rounded-2xl shadow-xl p-8">
-          
-          <button onClick={onBack} className="flex items-center text-gray-600 hover:text-gray-900 mb-6 transition-colors">
+          <button
+            onClick={onBack}
+            className="flex items-center text-gray-600 hover:text-gray-900 mb-6 transition-colors"
+          >
             <ArrowLeft className="h-4 w-4 mr-2" />
           </button>
 
@@ -81,75 +93,74 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
               {error}
             </div>
           )}
-          <form onSubmit={handleSubmit} className="space-y-6">
 
+          <form onSubmit={handleSubmit} className="space-y-6">
             {!isLogin && (
               <>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Nombre</label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
-                    <input
-                      type="text"
-                      name="nombre"
-                      required
-                      value={formData.nombre}
-                      onChange={handleInputChange}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-orange-500 focus:border-orange-500"
-                      placeholder="Tu nombre"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    name="nombre"
+                    required
+                    value={formData.nombre}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-orange-500 focus:border-orange-500"
+                    placeholder="Tu nombre"
+                  />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Apellido</label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
-                    <input
-                      type="text"
-                      name="apellido"
-                      required
-                      value={formData.apellido}
-                      onChange={handleInputChange}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-orange-500 focus:border-orange-500"
-                      placeholder="Tu apellido"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    name="apellido"
+                    required
+                    value={formData.apellido}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-orange-500 focus:border-orange-500"
+                    placeholder="Tu apellido"
+                  />
                 </div>
               </>
             )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Correo electrónico</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
-                <input
-                  type="email"
-                  name="email"
-                  required
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-orange-500 focus:border-orange-500"
-                  placeholder="correo@gmail.com"
-                />
-              </div>
+              <input
+                type="email"
+                name="email"
+                required
+                value={formData.email}
+                onChange={handleInputChange}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-orange-500 focus:border-orange-500"
+                placeholder="correo@gmail.com"
+              />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Contraseña</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
+              <div className="flex items-center bg-gray-50 border border-gray-400 rounded-lg focus-within:ring-2 focus-within:ring-orange-500 focus-within:border-orange-500">
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   name="password"
                   required
                   value={formData.password}
                   onChange={handleInputChange}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-orange-500 focus:border-orange-500"
+                  className="flex-1 px-4 py-3 bg-transparent border-none outline-none"
                   placeholder="••••••••"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="px-3 text-gray-500 hover:text-gray-700"
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
               </div>
             </div>
+
 
             <button
               type="submit"
@@ -163,7 +174,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
           <div className="mt-6 text-center">
             <button
               onClick={() => {
-                setIsLogin(prev => !prev);
+                setIsLogin((prev) => !prev);
                 setError('');
                 setFormData({ nombre: '', apellido: '', email: '', password: '' });
               }}
@@ -177,3 +188,4 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
     </div>
   );
 };
+
