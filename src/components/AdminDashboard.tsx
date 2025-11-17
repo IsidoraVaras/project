@@ -12,7 +12,7 @@ type View = 'overview' | 'responses' | 'user-detail' | 'response-detail' | 'crea
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const [currentView, setCurrentView] = useState<View>(() => {
     try {
-      const v = localStorage.getItem('admin.view') as View | null;
+      const v = window.sessionStorage.getItem('admin.view') as View | null;
       const allowed: View[] = ['overview', 'responses', 'user-detail', 'response-detail', 'create-admin', 'manage-admins'];
       return v && allowed.includes(v) ? v : 'overview';
     } catch {
@@ -22,10 +22,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
   // Usuario seleccionado y respuesta seleccionada para ver detalle
   const [selectedUserId, setSelectedUserId] = useState<string>(() => {
-    try { return localStorage.getItem('admin.selectedUserId') || ''; } catch { return ''; }
+    try { return window.sessionStorage.getItem('admin.selectedUserId') || ''; } catch { return ''; }
   });
   const [selectedResponseId, setSelectedResponseId] = useState<string>(() => {
-    try { return localStorage.getItem('admin.selectedResponseId') || ''; } catch { return ''; }
+    try { return window.sessionStorage.getItem('admin.selectedResponseId') || ''; } catch { return ''; }
   });
 
   // Listas de usuarios y administradores
@@ -47,15 +47,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const [creatingAdmin, setCreatingAdmin] = useState(false);
   const [createAdminMsg, setCreateAdminMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Persistencia de vista y selecciones entre recargas
+  // Persistencia de vista y selecciones entre recargas (sólo durante la sesión actual)
   useEffect(() => {
-    try { localStorage.setItem('admin.view', currentView); } catch {}
+    try { window.sessionStorage.setItem('admin.view', currentView); } catch {}
   }, [currentView]);
   useEffect(() => {
-    try { localStorage.setItem('admin.selectedUserId', selectedUserId || ''); } catch {}
+    try { window.sessionStorage.setItem('admin.selectedUserId', selectedUserId || ''); } catch {}
   }, [selectedUserId]);
   useEffect(() => {
-    try { localStorage.setItem('admin.selectedResponseId', selectedResponseId || ''); } catch {}
+    try { window.sessionStorage.setItem('admin.selectedResponseId', selectedResponseId || ''); } catch {}
   }, [selectedResponseId]);
 
   useEffect(() => {
