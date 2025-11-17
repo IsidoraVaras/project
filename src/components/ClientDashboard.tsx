@@ -205,6 +205,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
         return selectedSurvey ? (
           <SurveyForm
             survey={selectedSurvey}
+            userId={String(user.id)}
             onComplete={handleSurveyComplete}
             onCancel={() => setCurrentView('category-surveys')}
           />

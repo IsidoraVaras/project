@@ -20,16 +20,19 @@ interface DBQuestion {
 
 interface SurveyFormProps {
   survey: Survey;
+  userId: string;
   onComplete: (surveyId: string, answers: Answer[]) => void;
   onCancel: () => void;
 }
 
-export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCancel }) => {
+export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, userId, onComplete, onCancel }) => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string | number>>({});
   const [currentIndex, setCurrentIndex] = useState<number>(0);
+
+  const progressKey = `survey-progress:${userId}:${survey.id}`;
 
   const sanitize = (s: string) =>
     (s ?? '')
@@ -97,7 +100,36 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
         });
 
         setQuestions(mapped);
-        setCurrentIndex(0);
+
+        // Restaurar progreso guardado (si existe) para este usuario y encuesta
+        try {
+          const raw = window.localStorage.getItem(progressKey);
+          if (raw) {
+            const parsed = JSON.parse(raw) as {
+              answers?: Record<string, string | number>;
+              currentIndex?: number;
+            };
+
+            if (parsed.answers && typeof parsed.answers === 'object') {
+              setAnswers(parsed.answers);
+            } else {
+              setAnswers({});
+            }
+
+            const idx =
+              typeof parsed.currentIndex === 'number' && parsed.currentIndex >= 0
+                ? Math.min(parsed.currentIndex, mapped.length - 1)
+                : 0;
+            setCurrentIndex(idx);
+          } else {
+            setAnswers({});
+            setCurrentIndex(0);
+          }
+        } catch {
+          setAnswers({});
+          setCurrentIndex(0);
+        }
+
         setError(null);
       } catch (e) {
         console.error(e);
@@ -108,11 +140,25 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
     };
 
     fetchQuestions();
-  }, [survey.id]);
+  }, [survey.id, userId, progressKey]);
 
   const handleChange = (questionId: string, value: string | number) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
   };
+
+  // Guardar progreso parcial en localStorage
+  useEffect(() => {
+    if (!questions.length) return;
+    try {
+      const payload = {
+        answers,
+        currentIndex,
+      };
+      window.localStorage.setItem(progressKey, JSON.stringify(payload));
+    } catch {
+      // Ignorar errores de almacenamiento
+    }
+  }, [answers, currentIndex, progressKey, questions.length]);
 
   const validateCurrent = (): boolean => {
     if (!questions.length) return false;
@@ -149,6 +195,14 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
       questionId,
       answer: answers[questionId],
     }));
+
+    // Limpiar el progreso guardado al completar la encuesta
+    try {
+      window.localStorage.removeItem(progressKey);
+    } catch {
+      // Ignorar errores al limpiar
+    }
+
     onComplete(survey.id, finalAnswers);
   };
 
@@ -338,4 +392,3 @@ export const SurveyForm: React.FC<SurveyFormProps> = ({ survey, onComplete, onCa
     </div>
   );
 };
-
