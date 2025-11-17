@@ -15,34 +15,44 @@ interface ClientDashboardProps {
 type View = 'categories' | 'category-surveys' | 'survey-form' | 'results' | 'profile';
 
 export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdateProfile }) => {
+  // Vista actual dentro del panel del cliente
   const [currentView, setCurrentView] = useState<View>(() => {
     try { return (localStorage.getItem('client.view') as View) || 'categories'; } catch { return 'categories'; }
   });
+
+  // Categoría seleccionada 
   const [selectedCategory, setSelectedCategory] = useState<number | null>(() => {
     try {
       const v = localStorage.getItem('client.selectedCategory');
       return v ? parseInt(v, 10) : null;
     } catch { return null; }
   });
+
+  // Encuesta seleccionada 
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [selectedSurveyId, setSelectedSurveyId] = useState<string>(() => {
     try { return localStorage.getItem('client.selectedSurveyId') || ''; } catch { return ''; }
   });
+
+  // Resultados del usuario, encuestas y categorías cargadas 
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Persist state to localStorage
   useEffect(() => {
     try { localStorage.setItem('client.view', currentView); } catch {}
   }, [currentView]);
+
+  // Persistir categoría seleccionada
   useEffect(() => {
     try {
       if (selectedCategory !== null) localStorage.setItem('client.selectedCategory', String(selectedCategory));
       else localStorage.removeItem('client.selectedCategory');
     } catch {}
   }, [selectedCategory]);
+
+  // Persistir encuesta seleccionada 
   useEffect(() => {
     try {
       const id = selectedSurvey ? selectedSurvey.id : selectedSurveyId || '';
@@ -50,6 +60,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
     } catch {}
   }, [selectedSurvey, selectedSurveyId]);
 
+  // Cargar categorías, resultados del usuario y encuestas 
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -60,8 +71,8 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
         ]);
 
         if (!categoriesRes.ok) throw new Error('No se pudo obtener las categorías');
-        if (!resultsRes.ok) throw new Error('No se pudo obtener tus resultados');
-        if (!surveysRes.ok) throw new Error('No se pudo obtener las encuestas');
+        if (!resultsRes.ok) throw new Error('No se pudieron obtener tus resultados');
+        if (!surveysRes.ok) throw new Error('No se pudieron obtener las encuestas');
 
         const categoriesData: Category[] = await categoriesRes.json();
         const resultsData: SurveyResponse[] = await resultsRes.json();
@@ -91,15 +102,15 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
     fetchData();
   }, [user.id]);
 
-  // Rehydrate selected survey when surveys finish loading
+  // Reasignar la encuesta seleccionada cuando se cargan todas las encuestas
   useEffect(() => {
     if (!selectedSurvey && selectedSurveyId && surveys.length > 0) {
       const found = surveys.find(s => String(s.id) === String(selectedSurveyId));
       if (found) setSelectedSurvey(found);
     }
-  }, [selectedSurveyId, surveys]);
+  }, [selectedSurveyId, surveys, selectedSurvey]);
 
-  // Guard inconsistent states
+  // Corregir estados incoherentes de navegación
   useEffect(() => {
     if (currentView === 'category-surveys' && selectedCategory === null) {
       setCurrentView('categories');
@@ -113,8 +124,13 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
     return <div className="text-center py-12 text-gray-700">Cargando datos...</div>;
   }
 
+  // Respuestas del usuario logueado
   const userResponses = responses.filter(r => String(r.userId) === String(user.id));
+
+  // IDs de encuestas ya completadas por este usuario
   const completedSurveyIds = Array.from(new Set(userResponses.map(r => String(r.surveyId))));
+
+  // Cálculo de encuestas activas y cuántas quedan por responder
   const totalActive = surveys.filter(s => s.isActive).length;
   const availableLeft = Math.max(0, totalActive - completedSurveyIds.length);
 
@@ -127,6 +143,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
   };
 
   const handleSurveySelect = (survey: Survey) => {
+    // Bloquea responder encuestas ya completadas
     if (completedSurveyIds.includes(String(survey.id))) {
       alert('Ya completaste esta encuesta.');
       return;
@@ -136,6 +153,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
     setCurrentView('survey-form');
   };
 
+  // Enviar respuestas de la encuesta actualizar resultados locales
   const handleSurveyComplete = async (surveyId: string, answers: any[]) => {
     try {
       const newResponse = { surveyId, userId: user.id, answers };
@@ -157,6 +175,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
     setCurrentView('results');
   };
 
+  // Obtener nombre de la categoría
   const getCategoryTitle = (categoryId: number | null) => {
     if (categoryId === null) return '';
     return categories.find(c => String(c.id) === String(categoryId))?.nombre || `Categoría ID ${categoryId}`;
@@ -240,6 +259,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, onUpdate
               </div>
             </nav>
 
+            {/* Resumen de progreso del usuario */}
             <div className="mt-6 bg-white border-2 border-gray-300 rounded-xl p-4 shadow-sm">
               <h3 className="text-sm font-semibold text-gray-800 mb-3">Mi Progreso</h3>
               <div className="space-y-2">

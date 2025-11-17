@@ -1,30 +1,28 @@
-// src/components/LoginForm.tsx
 import React, { useState } from 'react';
 import { Mail, Lock, User, ArrowLeft } from 'lucide-react';
 import logocipaes from '../assets/LogoCIPAES.png';
 
 interface LoginFormProps {
   onLogin: (email: string, password: string) => Promise<boolean>;
-  onRegister: (
-    nombre: string,
-    apellido: string,
-    email: string,
-    password: string
-  ) => Promise<boolean>;
+  onRegister: (nombre: string, apellido: string, email: string, password: string) => Promise<boolean>;
   onBack: () => void;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBack }) => {
   const [isLogin, setIsLogin] = useState(true);
+
+  // Campos del formulario
   const [formData, setFormData] = useState({
     nombre: '',
     apellido: '',
     email: '',
     password: '',
   });
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Formulario para login o registro
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -34,22 +32,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
       let success = false;
 
       if (isLogin) {
+        // Login
         success = await onLogin(formData.email, formData.password);
-
-        if (!success) {
-          setError('Credenciales inválidas');
-        }
+        if (!success) setError('Credenciales inválidas');
       } else {
-        success = await onRegister(
-          formData.nombre,
-          formData.apellido,
-          formData.email,
-          formData.password
-        );
-
-        if (!success) {
-          setError('Error al registrar usuario');
-        }
+        // Registro
+        success = await onRegister(formData.nombre, formData.apellido, formData.email, formData.password);
+        if (!success) setError('Error al registrar usuario');
       }
     } catch (err) {
       if (!isLogin && err instanceof Error && err.message === 'EMAIL_TAKEN') {
@@ -62,11 +51,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
     }
   };
 
+  // Actualiza campos del formulario
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData((prev) => ({
-      ...prev,
-      [e.target.name]: e.target.value,
-    }));
+    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
     setError('');
   };
 
@@ -74,26 +61,18 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
     <div className="min-h-screen bg-gray-200 flex items-center justify-center px-4">
       <div className="max-w-md w-full">
         <div className="bg-white border border-gray-300 rounded-2xl shadow-xl p-8">
-          <button
-            onClick={onBack}
-            className="flex items-center text-gray-600 hover:text-gray-900 mb-6 transition-colors"
-          >
+          
+          <button onClick={onBack} className="flex items-center text-gray-600 hover:text-gray-900 mb-6 transition-colors">
             <ArrowLeft className="h-4 w-4 mr-2" />
           </button>
 
           <div className="text-center mb-8">
-            <img
-              src={logocipaes}
-              alt="Logo CIPAES"
-              className="h-12 w-auto mx-auto mb-4"
-            />
+            <img src={logocipaes} alt="Logo CIPAES" className="h-12 w-auto mx-auto mb-4" />
             <h2 className="text-3xl font-bold text-gray-900 mb-2">
               {isLogin ? 'Iniciar Sesión' : 'Crear Cuenta'}
             </h2>
             <p className="text-gray-700">
-              {isLogin
-                ? 'Ingresa al portal con tus credenciales'
-                : 'Regístrate para comenzar'}
+              {isLogin ? 'Ingresa al portal con tus credenciales' : 'Regístrate para comenzar'}
             </p>
           </div>
 
@@ -102,43 +81,37 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
               {error}
             </div>
           )}
-
           <form onSubmit={handleSubmit} className="space-y-6">
+
             {!isLogin && (
               <>
-                {/* Campo para el nombre */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Nombre
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Nombre</label>
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-500" />
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
                     <input
                       type="text"
                       name="nombre"
                       required
                       value={formData.nombre}
                       onChange={handleInputChange}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-600"
+                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-orange-500 focus:border-orange-500"
                       placeholder="Tu nombre"
                     />
                   </div>
                 </div>
 
-                {/* Campo para el apellido */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Apellido
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Apellido</label>
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-500" />
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
                     <input
                       type="text"
                       name="apellido"
                       required
                       value={formData.apellido}
                       onChange={handleInputChange}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-600"
+                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-orange-500 focus:border-orange-500"
                       placeholder="Tu apellido"
                     />
                   </div>
@@ -146,39 +119,33 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
               </>
             )}
 
-            {/* Campo para el correo */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Correo electrónico
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Correo electrónico</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-500" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
                 <input
                   type="email"
                   name="email"
                   required
                   value={formData.email}
                   onChange={handleInputChange}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-600"
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-orange-500 focus:border-orange-500"
                   placeholder="correo@gmail.com"
                 />
               </div>
             </div>
 
-            {/* Campo para la contraseña */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Contraseña
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Contraseña</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-500" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
                 <input
                   type="password"
                   name="password"
                   required
                   value={formData.password}
                   onChange={handleInputChange}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900 placeholder-gray-600"
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-400 rounded-lg focus:ring-orange-500 focus:border-orange-500"
                   placeholder="••••••••"
                 />
               </div>
@@ -187,7 +154,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-orange-800 text-white py-3 rounded-lg font-medium transition-colors duration-200 disabled:cursor-not-allowed"
+              className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-orange-800 text-white py-3 rounded-lg font-medium transition-colors disabled:cursor-not-allowed"
             >
               {loading ? 'Procesando...' : isLogin ? 'Iniciar Sesión' : 'Crear Cuenta'}
             </button>
@@ -196,15 +163,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister, onBac
           <div className="mt-6 text-center">
             <button
               onClick={() => {
-                setIsLogin((prev) => !prev);
+                setIsLogin(prev => !prev);
                 setError('');
                 setFormData({ nombre: '', apellido: '', email: '', password: '' });
               }}
               className="text-orange-500 hover:text-orange-400 font-medium transition-colors"
             >
-              {isLogin
-                ? '¿No tienes cuenta? Regístrate'
-                : '¿Ya tienes cuenta? Inicia sesión'}
+              {isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
             </button>
           </div>
         </div>
